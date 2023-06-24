@@ -2,6 +2,7 @@
 #define SSGUI_OUTPUT_STREAM_UTIL_H
 
 #include "glm/vec2.hpp"
+#include "glm/vec3.hpp"
 #include "glm/vec4.hpp"
 #include "ssGUI/Enums/WindowMode.hpp"
 #include <codecvt>
@@ -70,6 +71,12 @@ namespace glm
     inline std::ostream& operator<<(std::ostream& stream, const glm::ivec2& vec)
     {
         stream << "(glm::ivec2: " << vec.x << ", " << vec.y << ")";
+        return stream;
+    }
+    
+    inline std::ostream& operator<<(std::ostream& stream, const glm::ivec3& vec)
+    {
+        stream << "(glm::ivec2: " << vec.x << ", " << vec.y << ", " << vec.z << ")";
         return stream;
     }
     

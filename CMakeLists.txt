@@ -175,7 +175,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -std=c++0x")  #For surpress
 # ==========================================================
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/External/ssLogger" "${CMAKE_CURRENT_BINARY_DIR}/External/ssLogger")
-
 set_target_properties(ssLogger PROPERTIES FOLDER External)  # Set folder name for IDEs such as Visual Studio
 
 # ==========================================================

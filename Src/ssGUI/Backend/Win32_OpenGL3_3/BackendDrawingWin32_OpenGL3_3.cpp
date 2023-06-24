@@ -290,9 +290,9 @@ namespace Backend
                                                     const ssGUI::Backend::BackendFontInterface& font,
                                                     int characterSize)
     {
-        if(!font.IsValid())
+        if(!font.IsValid() || vertices.size() != texCoords.size() || vertices.size() != colors.size())
             return false;
-    
+
         auto& rawFont = const_cast<ssGUI::Backend::BackendFontInterface&>(font);
 
         ssGUI::ImageData charImgData;
@@ -372,7 +372,7 @@ namespace Backend
     {
         GetMainWindow()->SetGLContext();
 
-        if(!image.IsValid())
+        if(!image.IsValid() || vertices.size() != texCoords.size() || vertices.size() != colors.size())
             return false;
 
         //GL_CHECK_ERROR( glUseProgram(ProgramId); );
@@ -421,6 +421,9 @@ namespace Backend
                                                     const std::vector<glm::u8vec4>& colors)
     {
         GetMainWindow()->SetGLContext();
+
+        if(vertices.size() != colors.size())
+            return false;
 
         GL_CHECK_ERROR( glEnable(GL_BLEND); );
         GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );

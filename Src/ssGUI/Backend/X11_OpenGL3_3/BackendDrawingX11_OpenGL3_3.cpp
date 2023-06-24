@@ -76,11 +76,21 @@ namespace Backend
         glm::mat4x4 orthoMat = glm::ortho<float>(0.f, renderSize.x, renderSize.y, 0.f, 0, 10);
         GL_CHECK_ERROR( glMultMatrixf(glm::value_ptr(orthoMat)); );
     }
+    
+    void BackendDrawingX11_OpenGL3_3::InitializeOpenGLCommonIfNeeded()
+    {
+        if(OpenGLCommon == nullptr)
+        {
+            ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
+            OpenGLCommon = new ssGUI::Backend::OpenGL3_3_Common(mainWindow);
+        }
+    }
 
     BackendDrawingX11_OpenGL3_3::BackendDrawingX11_OpenGL3_3() :    BackendIndex(0),
                                                                     LastMainWindowSize(-1, -1),
                                                                     CharTextures(),
-                                                                    ImageTextures()
+                                                                    ImageTextures(),
+                                                                    OpenGLCommon(nullptr)
     {
         ssGUI::Backend::BackendManager::AddDrawingInterface(static_cast<ssGUI::Backend::BackendDrawingInterface*>(this));   
     }
@@ -92,6 +102,9 @@ namespace Backend
             it->first->Internal_RemoveBackendDrawingRecord(this);
     
         ssGUI::Backend::BackendManager::RemoveDrawingInterface(static_cast<ssGUI::Backend::BackendDrawingInterface*>(this));
+        
+        if(OpenGLCommon != nullptr)
+            delete OpenGLCommon;
     }
     
     void BackendDrawingX11_OpenGL3_3::SaveState()
@@ -148,6 +161,8 @@ namespace Backend
 
     bool BackendDrawingX11_OpenGL3_3::DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities)
     {
+        InitializeOpenGLCommonIfNeeded();
+    
         //Check if the main window is already closed
         if(GetMainWindow()->IsClosed())
             return false;

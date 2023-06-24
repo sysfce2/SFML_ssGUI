@@ -5,6 +5,7 @@
 
 #include "glad/glad_glx.h"
 #include "glad/glad.h"
+#include "ssGUI/Backend/OpenGL3_3_Common/OpenGL3_3_Common.hpp"
 
 #include <unordered_map>
 
@@ -48,11 +49,13 @@ namespace Backend
             std::unordered_map<CharTextureIdentifier, GLuint> CharTextures;                         //(Internal variable) This is used to keep track of all the character textures 
             std::unordered_map<ssGUI::Backend::BackendImageInterface*, GLuint> ImageTextures;       //(Internal variable) This is used to keep track of all the image textures 
 
+            ssGUI::Backend::OpenGL3_3_Common* OpenGLCommon;
         
             BackendDrawingX11_OpenGL3_3(BackendDrawingX11_OpenGL3_3 const& other);
         
             ssGUI::Backend::BackendMainWindowInterface* GetMainWindow();
             void UpdateViewPortAndModelViewIfNeeded();
+            void InitializeOpenGLCommonIfNeeded();
         
         public:
             BackendDrawingX11_OpenGL3_3();
