@@ -4,7 +4,7 @@
 #include "ssGUI/HelperClasses/ImageUtil.hpp"
 #include "ssGUI/DataClasses/ImageData.hpp"
 #include "ssGUI/HelperClasses/LogWithTagsAndLevel.hpp"
-#include "glm/gtc/matrix_transform.hpp"
+//#include "glm/gtc/matrix_transform.hpp"
 #include "ssGUI/DataClasses/DrawingEntity.hpp"
 
 #define GL_CHECK_ERROR(x)\
@@ -221,10 +221,21 @@ namespace Backend
     
     void OpenGL3_3_Common::DrawShapesToBackBuffer()
     {
-        
+        //TODO   
     }
     
-    OpenGL3_3_Common::OpenGL3_3_Common(BackendMainWindowInterface* mainWindow)
+    bool OpenGL3_3_Common::OnNewAtlasRequest()
+    {
+        //TODO
+        return false;
+    }
+    
+    
+    OpenGL3_3_Common::OpenGL3_3_Common(BackendMainWindowInterface* mainWindow) :    ProgramId(0),
+                                                                                    CachedImages(0),
+                                                                                    CurrentMainWindow(nullptr),
+                                                                                    LastMainWindowSize(),
+                                                                                    CurrentImageAtlas(nullptr)
     {
         CurrentMainWindow = mainWindow;
         mainWindow->SetGLContext();
@@ -284,10 +295,10 @@ namespace Backend
         GL_CHECK_ERROR( glGenTextures(1, &CachedImages) );
         GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, CachedImages) );
         
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR) );
+        GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST) );
+        GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE) );
+        GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE) );
         
         GL_CHECK_ERROR( glTexImage3D(   GL_TEXTURE_2D_ARRAY, 
                                         0, 
@@ -302,6 +313,37 @@ namespace Backend
         
         GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
         
+        //Generate ID for EBO that uses it
+        GL_CHECK_ERROR( glGenBuffers(1, &EBO) );
+        
+        //Generate ID for VBOs for vertex pos, colors, UVs and UseUVs flag
+        GL_CHECK_ERROR( glGenBuffers(1, &VertsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &ColorsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &UVsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &UseUVsVBO) );
+        
+        //Generate ID for VAO and bind VBOs and EBO created above to this VAO
+        GL_CHECK_ERROR( glGenVertexArrays(1, &VAO) );
+        
+        GL_CHECK_ERROR( glBindVertexArray(VAO) );
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, VertsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0) );
+        
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, ColorsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, 0) );
+        
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, UVsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0) );
+
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, UseUVsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(3, 1,  GL_INT, GL_FALSE, 0, 0) );
+
+        GL_CHECK_ERROR( glBindVertexArray(0) );
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, 0) );
+
+        CurrentImageAtlas = new ssGUI::Backend::DynamicImageAtlas(  glm::ivec2(maxTextureSize, maxTextureSize), 
+                                                                    glm::ivec2(64, 64), 
+                                                                    std::bind(&OpenGL3_3_Common::OnNewAtlasRequest, this));
         
         //// set the texture wrapping/filtering options (on the currently bound texture object)
         //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
@@ -312,26 +354,34 @@ namespace Backend
         //int width, height, nrChannels;
     }
     
-    void OpenGL3_3_Common::UpdateViewPortAndModelViewIfNeeded()
+    OpenGL3_3_Common::~OpenGL3_3_Common()
+    {
+        delete CurrentImageAtlas;
+    }
+    
+    glm::mat4x4 OpenGL3_3_Common::UpdateViewPortAndModelView(glm::ivec2 widthHeight)
     {
         if(CurrentMainWindow == nullptr)
         {
             ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to get MainWinodw");
-            return;
+            return glm::mat4x4();
         }
 
-        if(CurrentMainWindow->GetRenderSize() == LastMainWindowSize)
-            return;
+        //if(CurrentMainWindow->GetRenderSize() == LastMainWindowSize)
+        //    return glm::mat4x4;
 
-        LastMainWindowSize = CurrentMainWindow->GetRenderSize();
+        //LastMainWindowSize = CurrentMainWindow->GetRenderSize();
         
         CurrentMainWindow->SetGLContext();
-        glm::ivec2 renderSize = CurrentMainWindow->GetRenderSize();
-        GL_CHECK_ERROR( glViewport(0, 0, renderSize.x, renderSize.y); );
+        //glm::ivec2 renderSize = CurrentMainWindow->GetRenderSize();
+        GL_CHECK_ERROR( glViewport(0, 0, widthHeight.x, widthHeight.y); );
+        
+        //These are for glVertex calls
         GL_CHECK_ERROR( glMatrixMode(GL_MODELVIEW););
         GL_CHECK_ERROR( glLoadIdentity(); );
-        glm::mat4x4 orthoMat = glm::ortho<float>(0.f, renderSize.x, renderSize.y, 0.f, 0, 10);
+        glm::mat4x4 orthoMat = glm::ortho<float>(0.f, widthHeight.x, widthHeight.y, 0.f, 0, 10);
         GL_CHECK_ERROR( glMultMatrixf(glm::value_ptr(orthoMat)); );
+        return orthoMat;
     }
     
     void OpenGL3_3_Common::SaveState()
@@ -388,7 +438,7 @@ namespace Backend
         if(CurrentMainWindow->IsClosed())
             return false;
 
-        UpdateViewPortAndModelViewIfNeeded();
+        UpdateViewPortAndModelView();
 
         //Start drawing
         for(int i = 0; i < entities.size(); i++)
@@ -428,14 +478,34 @@ namespace Backend
     
     void OpenGL3_3_Common::AddImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
     {
-        #if 0
         if(!backendImage->IsValid())
             return;
     
-        if(ImageTextures.find(backendImage) != ImageTextures.end())
+        if(MappedImgIds.find(backendImage) != MappedImgIds.end())
             return;
             
         {
+            //Allocate space on atlas
+            DynamicImageAtlas::ImageAtlasImageInfo imgInfo;
+            imgInfo.ImageSizeInPixel = backendImage->GetSize();
+            imgInfo.HasMipmap = true;
+            int imgId;
+            
+            if(!CurrentImageAtlas->RequestImage(imgInfo, imgId))
+            {
+                ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to request atlas image");
+                return;
+            }
+            
+            if(!CurrentImageAtlas->GetImageInfo(imgId, imgInfo))
+            {
+                ssGUI_ERROR("Internal error, ImageAtlas failed internally");
+                return;
+            }
+            
+            //Upload to GPU memory (using glTexSubImage3D)
+            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, CachedImages) );
+            
             //Get image
             ssGUI::ImageFormat format;
             const void* rawPtr = backendImage->GetPixelPtr(format);
@@ -447,7 +517,118 @@ namespace Backend
                 delete[] rgba32Img;
                 return;
             }
+            
+            //Write the image data to the texture
+            GL_CHECK_ERROR( glTexSubImage3D(GL_TEXTURE_2D_ARRAY,
+                                            0, 
+                                            imgInfo.LocationInPixel.x, 
+                                            imgInfo.LocationInPixel.y, 
+                                            imgInfo.LocationInPixel.z,
+                                            imgInfo.ImageSizeInPixel.x,
+                                            imgInfo.ImageSizeInPixel.y,
+                                            0,
+                                            GL_RGBA,
+                                            GL_UNSIGNED_BYTE,
+                                            rgba32Img) );
+            
+            delete[] rgba32Img;
+            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
+            
+            
+            glm::ivec2 lastMipmapSize = backendImage->GetSize();
+            glm::ivec2 lastMipmampPixelPosOffset = glm::ivec2(0, 0);
+            glm::ivec2 currentMipmampPixelPosOffset = glm::ivec2(lastMipmapSize.x, 0);
+            
+            
+            
+            const int MAX_LOOP = 100;
+            const int READ_FB = 0;
+            const int DRAW_FB = 1;
+            
+            GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D) );
+            
+            GLuint readDrawFramebuffers[2] = {0, 0};
+            
+            GL_CHECK_ERROR( glGenFramebuffers(2, readDrawFramebuffers) );
 
+            //Finally, generates mipmap for it
+            for(int i = 0; i < MAX_LOOP; i++)
+            {
+                //Last mipmap, no need to continue
+                if(lastMipmapSize.x / 2 <= 0 || lastMipmapSize.y / 2 <= 0)
+                    break;
+            
+                //Generate mipmap to a render buffer    
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, readDrawFramebuffers[READ_FB]);
+                glFramebufferTexture3D( GL_READ_FRAMEBUFFER, 
+                                        GL_COLOR_ATTACHMENT0, 
+                                        GL_TEXTURE_2D_ARRAY, 
+                                        CachedImages,
+                                        0,
+                                        imgInfo.LocationInPixel.z);
+                
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, readDrawFramebuffers[DRAW_FB]);
+                
+                GLuint mipmapRenderbuffer = 0;
+                glGenRenderbuffers(1, &mipmapRenderbuffer);
+                glBindRenderbuffer(GL_RENDERBUFFER, mipmapRenderbuffer);
+                glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, lastMipmapSize.x / 2, lastMipmapSize.y / 2);
+                glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+                glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, 
+                                            GL_COLOR_ATTACHMENT0, 
+                                            GL_RENDERBUFFER, 
+                                            mipmapRenderbuffer);
+
+                glBlitFramebuffer(  lastMipmampPixelPosOffset.x, 
+                                    lastMipmampPixelPosOffset.y, 
+                                    lastMipmapSize.x, 
+                                    lastMipmapSize.y, 
+                                    0, 
+                                    0, 
+                                    lastMipmapSize.x / 2, 
+                                    lastMipmapSize.y / 2,
+                                    GL_COLOR_BUFFER_BIT, 
+                                    GL_LINEAR);
+
+                //Then copy the mipmap render buffer to the atlas
+                glFramebufferRenderbuffer( GL_READ_FRAMEBUFFER, 
+                                            GL_COLOR_ATTACHMENT0, 
+                                            GL_RENDERBUFFER, 
+                                            mipmapRenderbuffer);
+
+                glFramebufferTexture3D( GL_DRAW_FRAMEBUFFER, 
+                                        GL_COLOR_ATTACHMENT0, 
+                                        GL_TEXTURE_2D_ARRAY, 
+                                        CachedImages,
+                                        0,
+                                        imgInfo.LocationInPixel.z);
+
+                glBlitFramebuffer(  0, 
+                                    0, 
+                                    lastMipmapSize.x / 2, 
+                                    lastMipmapSize.y / 2,
+                                    currentMipmampPixelPosOffset.x,
+                                    currentMipmampPixelPosOffset.y, 
+                                    lastMipmapSize.x / 2, 
+                                    lastMipmapSize.y / 2, 
+                                    GL_COLOR_BUFFER_BIT, 
+                                    GL_NEAREST);
+                
+                //TODO: Cleaning up render buffer
+                
+                lastMipmapSize /= 2;
+                
+                lastMipmampPixelPosOffset = currentMipmampPixelPosOffset;
+                currentMipmampPixelPosOffset += glm::ivec2(0, lastMipmapSize.y);
+                
+                if(i == MAX_LOOP - 1)
+                {
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "MAX_LOOP reached, internal error!!");
+                    return;
+                }
+            }
+            
             GLuint textureId = 0;
 
             GL_CHECK_ERROR( glGenTextures(1, &textureId); );
@@ -461,15 +642,13 @@ namespace Backend
             GL_CHECK_ERROR( glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, backendImage->GetSize().x, backendImage->GetSize().y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
                             rgba32Img); );
 
-            ImageTextures[backendImage] = textureId;
+            //ImageTextures[backendImage] = textureId;
 
-            delete[] rgba32Img;
             
-            backendImage->Internal_AddBackendDrawingRecord(this);
+            //backendImage->Internal_AddBackendDrawingRecord(this);
         }
         
         GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-        #endif
     }
     
     void OpenGL3_3_Common::RemoveImageCache(ssGUI::Backend::BackendImageInterface* backendImage)

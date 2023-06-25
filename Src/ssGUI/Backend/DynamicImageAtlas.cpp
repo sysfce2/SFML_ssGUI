@@ -204,7 +204,7 @@ namespace Backend
                                                                                                     AtlasSizeInPixel(atlasSize),
                                                                                                     UsableSizeInPixel(),
                                                                                                     CellsCountInGrid(),
-                                                                                                    NextImageId(0),
+                                                                                                    NextImageId(1),
                                                                                                     ImageInfos(),
                                                                                                     FreeCells(),
                                                                                                     OnRequestNewAtlasCallback(newAtlasRequestCallback),
