@@ -75,7 +75,7 @@ int main()
         
         dynamicAtlas->RemoveImage(imgId);
         ssTEST_OUTPUT_ASSERT("Post remove", !dynamicAtlas->GetImageInfo(imgId, returnInfo));
-    }
+    };
     
     ssTEST("RequestNewAtlasCallback Test")
     {
@@ -93,7 +93,7 @@ int main()
         dynamicAtlas->AddOnRequestNewAtlasCallback([](){ return false; });
         
         ssTEST_OUTPUT_ASSERT("RequestImage 3", !dynamicAtlas->RequestImage(imgInfo, imgId));
-    }
+    };
     
     ssTEST("Allocated Image Position Test")
     {
@@ -144,7 +144,7 @@ int main()
         ssTEST_OUTPUT_ASSERT("GetImageInfo 4", dynamicAtlas->GetImageInfo(imgId4, getImgInfo4));
         
         ssTEST_OUTPUT_ASSERT("Validate Pos for new atlas", getImgInfo4.LocationInPixel == glm::ivec3(0, 0, 1) && AtlasRequested == 1);
-    }
+    };
     
     ssTEST("RemoveImage adds free cells back Test")
     {
@@ -183,7 +183,51 @@ int main()
         ssTEST_OUTPUT_ASSERT("Validation",  imgId4 != imgId3 &&
                                             AtlasRequested == 0 &&
                                             getImgInfo4.LocationInPixel == glm::ivec3(350, 0, 0));
-    }
+    };
+ 
+    ssTEST("Mipmap allocation Test")
+    {
+        int imgId = -1;
+        DynamicImageAtlas::ImageAtlasImageInfo imgInfo = CreateImageInfo(glm::ivec2(250, 200),  true);
+        ssTEST_OUTPUT_ASSERT("RequestImage", dynamicAtlas->RequestImage(imgInfo, imgId));
+
+        int imgId2 = -1;
+        DynamicImageAtlas::ImageAtlasImageInfo imgInfo2 = CreateImageInfo(glm::ivec2(300, 200),  true);
+        ssTEST_OUTPUT_ASSERT("RequestImage 2", dynamicAtlas->RequestImage(imgInfo2, imgId2));
+        
+        int imgId3 = -1;
+        DynamicImageAtlas::ImageAtlasImageInfo imgInfo3 = CreateImageInfo(glm::ivec2(50, 200),  true);
+        ssTEST_OUTPUT_ASSERT("RequestImage 3", dynamicAtlas->RequestImage(imgInfo3, imgId3));
+        
+        // mm = mipmaps
+        //┌────────────┬────┐
+        //│        │ m │  │ │
+        //│      1 │ m │ 3│ │
+        //│        │   │  │ │
+        //├────────────┴─┬──┤
+        //│         │ m  │  │
+        //│      2  │ m  │  │
+        //│         │    │  │
+        //├──────────────┘  │
+        //└─────────────────┘
+        
+        DynamicImageAtlas::ImageAtlasImageInfo getImgInfo;
+        DynamicImageAtlas::ImageAtlasImageInfo getImgInfo2;
+        DynamicImageAtlas::ImageAtlasImageInfo getImgInfo3;
+        
+        ssTEST_OUTPUT_ASSERT("GetImageInfo", dynamicAtlas->GetImageInfo(imgId, getImgInfo));
+        ssTEST_OUTPUT_ASSERT("GetImageInfo 2", dynamicAtlas->GetImageInfo(imgId2, getImgInfo2));
+        ssTEST_OUTPUT_ASSERT("GetImageInfo 3", dynamicAtlas->GetImageInfo(imgId3, getImgInfo3));
+        
+        //ssLOG_LINE("getImgInfo.LocationInPixel: "<<getImgInfo.LocationInPixel);
+        //ssLOG_LINE("getImgInfo2.LocationInPixel: "<<getImgInfo2.LocationInPixel);
+        //ssLOG_LINE("getImgInfo3.LocationInPixel: "<<getImgInfo3.LocationInPixel);
+        
+        ssTEST_OUTPUT_ASSERT("Validate Pos",    getImgInfo.LocationInPixel == glm::ivec3() &&
+                                                getImgInfo2.LocationInPixel == glm::ivec3(0, 200, 0) &&
+                                                getImgInfo3.LocationInPixel == glm::ivec3(350, 0, 0));
+    };
+ 
     
     ssTEST_END();
 }
