@@ -1,13 +1,13 @@
 #ifndef SSGUI_DYNAMIC_IMAGE_ATLAS_HPP
 #define SSGUI_DYNAMIC_IMAGE_ATLAS_HPP
 
+#include "ssGUI/HelperClasses/OutputStreamUtil.hpp"
 
 #include "glm/vec2.hpp"
 #include "glm/vec3.hpp"
 #include <functional>
 #include <map>
 #include <unordered_map>
-
 
 namespace ssGUI
 {
@@ -23,6 +23,16 @@ namespace Backend
                 glm::ivec3 LocationInPixel;
                 glm::ivec2 ImageSizeInPixel;
                 bool HasMipmap;
+
+                inline friend std::ostream& operator<< (std::ostream& stream, const ImageAtlasImageInfo& other)
+                {
+                    stream  << SSGUI_OUTPUT_CLASS_NAME(ImageAtlasImageInfo)
+                            << SSGUI_OUTPUT_VAR(LocationInPixel)
+                            << SSGUI_OUTPUT_VAR(ImageSizeInPixel)
+                            << SSGUI_OUTPUT_LAST_VAR(HasMipmap);
+                            
+                    return stream;
+                }
             };
     
         private:
@@ -75,6 +85,8 @@ namespace Backend
             bool GetImageInfo(int id, ImageAtlasImageInfo& returnInfo);
     
             void AddOnRequestNewAtlasCallback(std::function<bool(void)> callback);
+            
+            glm::ivec2 GetAtlasSize();
     };
 }
 

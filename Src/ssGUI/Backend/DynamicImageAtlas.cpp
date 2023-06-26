@@ -198,6 +198,12 @@ namespace Backend
         OnRequestNewAtlasCallback = callback;
     }
     
+    glm::ivec2 DynamicImageAtlas::GetAtlasSize()
+    {
+        return AtlasSizeInPixel;
+    }
+    
+    
     DynamicImageAtlas::DynamicImageAtlas(   glm::ivec2 atlasSize, 
                                             glm::ivec2 cellSize,
                                             std::function<bool(void)> newAtlasRequestCallback) :    CellSizeInPixel(cellSize),

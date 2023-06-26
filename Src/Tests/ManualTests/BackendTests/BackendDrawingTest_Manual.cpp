@@ -41,40 +41,40 @@ void CreateShapes(std::vector<ssGUI::DrawingEntity>& entities, glm::vec2 baseSiz
     
     //Stretch X
     //Sampling color
-    entity.Vertices.push_back(startPos + offset * 1.f);
-    entity.Vertices.push_back(startPos + offset * 1.f + glm::vec2(baseSize.x * 2, 0));
-    entity.Vertices.push_back(startPos + offset * 1.f + baseSize + glm::vec2(baseSize.x, 0));
-    entity.Vertices.push_back(startPos + offset * 1.f + glm::vec2(0, baseSize.y));
-    entity.Colors.push_back(glm::u8vec4(255, 0, 0, 255));
-    entity.Colors.push_back(glm::u8vec4(0, 255, 0, 255));
-    entity.Colors.push_back(glm::u8vec4(0, 0, 255, 255));
-    entity.Colors.push_back(baseColor);
-    entity.EntityName = DrawingTestShapeName;
-    entities.push_back(entity);
-    entity = ssGUI::DrawingEntity();
+    //entity.Vertices.push_back(startPos + offset * 1.f);
+    //entity.Vertices.push_back(startPos + offset * 1.f + glm::vec2(baseSize.x * 2, 0));
+    //entity.Vertices.push_back(startPos + offset * 1.f + baseSize + glm::vec2(baseSize.x, 0));
+    //entity.Vertices.push_back(startPos + offset * 1.f + glm::vec2(0, baseSize.y));
+    //entity.Colors.push_back(glm::u8vec4(255, 0, 0, 255));
+    //entity.Colors.push_back(glm::u8vec4(0, 255, 0, 255));
+    //entity.Colors.push_back(glm::u8vec4(0, 0, 255, 255));
+    //entity.Colors.push_back(baseColor);
+    //entity.EntityName = DrawingTestShapeName;
+    //entities.push_back(entity);
+    //entity = ssGUI::DrawingEntity();
     
-    //Stretch Y
-    entity.Vertices.push_back(startPos + offset * 2.f);
-    entity.Vertices.push_back(startPos + offset * 2.f + glm::vec2(baseSize.x, 0));
-    entity.Vertices.push_back(startPos + offset * 2.f + baseSize + glm::vec2(0, baseSize.y));
-    entity.Vertices.push_back(startPos + offset * 2.f + glm::vec2(0, baseSize.y * 2));
-    entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
-    entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
-    entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
-    entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
-    entity.EntityName = DrawingTestShapeName;
-    entities.push_back(entity);
-    entity = ssGUI::DrawingEntity();
+    ////Stretch Y
+    //entity.Vertices.push_back(startPos + offset * 2.f);
+    //entity.Vertices.push_back(startPos + offset * 2.f + glm::vec2(baseSize.x, 0));
+    //entity.Vertices.push_back(startPos + offset * 2.f + baseSize + glm::vec2(0, baseSize.y));
+    //entity.Vertices.push_back(startPos + offset * 2.f + glm::vec2(0, baseSize.y * 2));
+    //entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
+    //entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
+    //entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
+    //entity.Colors.push_back(glm::u8vec4(127, 127, 127, 127));
+    //entity.EntityName = DrawingTestShapeName;
+    //entities.push_back(entity);
+    //entity = ssGUI::DrawingEntity();
     
-    //Non-quad
-    entity.Vertices.push_back(startPos + offset * 3.f);
-    entity.Vertices.push_back(startPos + offset * 3.f + glm::vec2(baseSize.x, 0));
-    entity.Vertices.push_back(startPos + offset * 3.f + baseSize);
-    entity.Colors.push_back(glm::u8vec4(255, 0, 0, 127));
-    entity.Colors.push_back(glm::u8vec4(0, 255, 0, 127));
-    entity.Colors.push_back(glm::u8vec4(0, 0, 255, 127));
-    entity.EntityName = DrawingTestShapeName;
-    entities.push_back(entity);
+    ////Non-quad
+    //entity.Vertices.push_back(startPos + offset * 3.f);
+    //entity.Vertices.push_back(startPos + offset * 3.f + glm::vec2(baseSize.x, 0));
+    //entity.Vertices.push_back(startPos + offset * 3.f + baseSize);
+    //entity.Colors.push_back(glm::u8vec4(255, 0, 0, 127));
+    //entity.Colors.push_back(glm::u8vec4(0, 255, 0, 127));
+    //entity.Colors.push_back(glm::u8vec4(0, 0, 255, 127));
+    //entity.EntityName = DrawingTestShapeName;
+    //entities.push_back(entity);
 }
 
 void SetUp()
@@ -169,32 +169,29 @@ void DrawTextureTest()
         std::vector<ssGUI::DrawingEntity> drawingEntities;
         
         //std::vector<glm::vec2> vertices;
-        CreateShapes(drawingEntities, imgSize, glm::u8vec4(255, 255, 255, 255));
+        CreateShapes(drawingEntities, glm::vec2(imgSize) * glm::vec2(1.5, 1), glm::u8vec4(255, 255, 255, 255));
         
         //std::vector<glm::u8vec4> colors;
         //CreateColors(colors, );
         
         std::vector<glm::vec2> texCoords = 
         {
-            glm::vec2(0, 0), glm::vec2(imgSize.x, 0), imgSize, glm::vec2(0, imgSize.y),
+            glm::vec2(0, 0), glm::vec2(imgSize.x * 1.5f, 0), glm::vec2(imgSize) * glm::vec2(1.5f, 1), glm::vec2(0, imgSize.y),
         };
         
-        //std::vector<int> counts;
-        //CreateCounts(counts);
-
-        //ssGUI::DrawingProperty prop;
-        for(int i = 0; i < 4; i++)
-            drawingEntities[i].BackendImage = ImgBackend;
+        //for(int i = 0; i < 4; i++)
+        //    drawingEntities[i].BackendImage = ImgBackend;
+            drawingEntities[0].BackendImage = ImgBackend;
         
         drawingEntities[0].TexCoords = texCoords;
-        drawingEntities[1].TexCoords = texCoords;
-        drawingEntities[2].TexCoords = texCoords;
+        //drawingEntities[1].TexCoords = texCoords;
+        //drawingEntities[2].TexCoords = texCoords;
         
-        texCoords = 
-        {
-            glm::vec2(0, 0), glm::vec2(imgSize.x, 0), imgSize
-        };
-        drawingEntities[3].TexCoords = texCoords;
+        //texCoords = 
+        //{
+        //    glm::vec2(0, 0), glm::vec2(imgSize.x, 0), imgSize
+        //};
+        //drawingEntities[3].TexCoords = texCoords;
         
         
         //std::vector<ssGUI::DrawingProperty> properties = 
@@ -204,6 +201,8 @@ void DrawTextureTest()
         //    prop,
         //    prop
         //};
+    
+        //ssLOG_LINE("drawingEntities: "<<drawingEntities);
     
         DrawingBackend->DrawEntities(drawingEntities);
         DrawingBackend->Render(glm::u8vec3(255, 255, 255));

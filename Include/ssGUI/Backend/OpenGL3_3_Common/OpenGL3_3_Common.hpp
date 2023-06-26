@@ -26,6 +26,7 @@ namespace Backend
     class BackendMainWindowInterface;
     class BackendFontInterface;
     class BackendImageInterface;
+    class BackendDrawingInterface;
     
     class OpenGL3_3_Common
     {
@@ -52,6 +53,8 @@ namespace Backend
 
 
             BackendMainWindowInterface* CurrentMainWindow;
+            BackendDrawingInterface* CurrentDrawingBackend;
+            
             glm::ivec2 LastMainWindowSize;
             
             DynamicImageAtlas* CurrentImageAtlas;
@@ -87,7 +90,7 @@ namespace Backend
             using CharCode = uint32_t;
             using CharTextureIdentifier = std::tuple<ssGUI::Backend::BackendFontInterface*, CharSize, CharCode>;
         
-            OpenGL3_3_Common(BackendMainWindowInterface* mainWindow);
+            OpenGL3_3_Common(BackendMainWindowInterface* mainWindow, BackendDrawingInterface* drawingBackend);
             
             ~OpenGL3_3_Common();
         

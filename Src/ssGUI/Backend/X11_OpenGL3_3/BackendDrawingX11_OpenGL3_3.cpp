@@ -82,7 +82,7 @@ namespace Backend
         if(OpenGLCommon == nullptr)
         {
             ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
-            OpenGLCommon = new ssGUI::Backend::OpenGL3_3_Common(mainWindow);
+            OpenGLCommon = new ssGUI::Backend::OpenGL3_3_Common(mainWindow, this);
         }
     }
 
@@ -162,6 +162,9 @@ namespace Backend
     bool BackendDrawingX11_OpenGL3_3::DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities)
     {
         InitializeOpenGLCommonIfNeeded();
+
+        return OpenGLCommon->DrawEntities(entities);
+
     
         //Check if the main window is already closed
         if(GetMainWindow()->IsClosed())
