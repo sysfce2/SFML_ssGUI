@@ -26,34 +26,103 @@ namespace Backend
     const std::string OpenGL3_3_Common::VertShader = 
     R"(
         #version 330 core
-        layout (location = 0) in vec3 aPos;
-        layout (location = 1) in vec3 aColor;
-        layout (location = 2) in vec3 aTexCoord;
+        
+        in vec3 vertPos;
+        in vec4 vertColor;
+        in vec3 vertTexCoord;
+        in int vertIsUV;
+        in vec2 vertTexTopLeft;
+        in vec2 vertTexBotRight;
 
-        out vec3 ourColor;
-        out vec3 TexCoord;
+        out vec4 fragColor;
+        flat out int fragIsUV;
+        out vec3 fragTexCoord;
+        out vec2 fragTexTopLeft;
+        out vec2 fragTexBotRight;
+
+        uniform mat4 projMatrix;
 
         void main()
         {
-            gl_Position = vec4(aPos, 1.0);
-            ourColor = aColor;
-            TexCoord = aTexCoord;
-        }   
+            gl_Position = vec4(vertPos, 1.0);
+            gl_Position = projMatrix * gl_Position;
+            
+            fragColor = vertColor;
+            fragIsUV = vertIsUV;
+            fragTexCoord = vertTexCoord;
+            fragTexTopLeft = vertTexTopLeft;
+            fragTexBotRight = vertTexBotRight;
+        }
     )";
     
     const std::string OpenGL3_3_Common::FragShader = 
     R"(
         #version 330 core
-        out vec4 FragColor;
         
-        in vec3 ourColor;
-        in vec3 TexCoord;
+        #extension GL_ARB_texture_query_lod : enable
+
+        out vec4 outColor;
+        
+        in vec4 fragColor;
+        flat in int fragIsUV;
+        in vec3 fragTexCoord;
+        in vec2 fragTexTopLeft;
+        in vec2 fragTexBotRight;
 
         uniform sampler2DArray ourTexture;
 
+        //From: https://stackoverflow.com/questions/24388346/how-to-access-automatic-mipmap-level-in-glsl-fragment-shader-texture
+        // Does not take into account GL_TEXTURE_MIN_LOD/GL_TEXTURE_MAX_LOD/GL_TEXTURE_LOD_BIAS,
+        // nor implementation-specific flexibility allowed by OpenGL spec
+        float mip_map_level(in vec2 texture_coordinate) // in texel units
+        {
+            vec2  dx_vtc        = dFdx(texture_coordinate);
+            vec2  dy_vtc        = dFdy(texture_coordinate);
+            float delta_max_sqr = max(dot(dx_vtc, dx_vtc), dot(dy_vtc, dy_vtc));
+            float mml = 0.5 * log2(delta_max_sqr);
+            return max( 0, mml ); // Thanks @Nims
+        }
+
         void main()
         {
-            FragColor = texture(ourTexture, TexCoord);
+            if(fragIsUV > 0)
+            {
+                outColor = fragColor;
+                return;
+            }
+            
+            float mipmapLevel = 0;
+        
+            #ifdef GL_ARB_texture_query_lod
+                mipmapLevel = textureQueryLOD(ourTexture, vec2(fragTexCoord.x, fragTexCoord.y)).x;
+            #else
+                mipmapLevel = mip_map_level(fragTexCoord.xy * textureSize(ourTexture, 0).xy);
+            #endif
+            
+            int roundedMipmapLevel = int(mipmapLevel + 0.5f);
+            
+            //If mipmap level is 0, don't need to do anything
+            if(roundedMipmapLevel == 0)
+            {
+                outColor = texture(ourTexture, fragTexCoord) * fragColor;
+                return;
+            }
+            
+            //Otherwise get the localized UV
+            vec2 localTexCoord = (fragTexCoord.xy - fragTexTopLeft) / (fragTexBotRight - fragTexTopLeft);
+            
+            //And multiply by 0.5 ^ mipmap level
+            float mipmapMultiplier = pow(0.5f, float(roundedMipmapLevel));
+            
+            //The coordinate of the mipmap in y can be found by using the nth partial sum of a geometric sequence
+            //  with this (modified) formula: (1 - 0.5 ^ mipmapLevel) / (1 - 0.5) - 1
+            float mipmapYOffsetMultiplier = (1 - mipmapMultiplier) / 0.5f - 1;
+            
+            vec3 mipmapTexCoord = vec3( fragTexBotRight.x + localTexCoord.x * mipmapMultiplier, 
+                                        fragTexTopLeft.y + mipmapYOffsetMultiplier + localTexCoord.y * mipmapMultiplier,
+                                        fragTexCoord.z);
+        
+            outColor = texture(ourTexture, mipmapTexCoord) * fragColor;
         }  
     )";
 
@@ -371,7 +440,6 @@ namespace Backend
         ssLOG_LINE("maxTextureSize: "<<maxTextureSize);
         ssLOG_LINE("maxLayerSize: "<<maxLayerSize);
         
-        #if 0
         GLint success = GL_FALSE;
         char infoLog[512] { 0 };
         
@@ -438,7 +506,6 @@ namespace Backend
         // delete the shaders as they're linked into our program now and no longer necessary
         GL_CHECK_ERROR( glDeleteShader(vertexShaderId) );
         GL_CHECK_ERROR( glDeleteShader(fragmentShaderId) );
-        #endif
         
         GL_CHECK_ERROR( glEnable(GL_TEXTURE_3D) );
         
