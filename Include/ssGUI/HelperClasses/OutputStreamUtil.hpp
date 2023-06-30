@@ -54,7 +54,7 @@ namespace ssGUI
             if(i != vec.size() - 1)
                 stream << vec[i] << ", ";
             else
-                stream << vec[i] << ")" << std::endl;
+                stream << vec[i] << ")";
         }
         return stream;
     }

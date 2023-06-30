@@ -211,6 +211,11 @@ namespace Backend
     void BackendDrawingX11_OpenGL3_3::Render(glm::u8vec3 clearColor)
     {
         ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
+        InitializeOpenGLCommonIfNeeded();
+        ClearBackBuffer(clearColor);
+        OpenGLCommon->DrawToBackBuffer();
+        
+        ssLOG_LINE("Rendered");
         
         if(mainWindow == nullptr)
         {
@@ -221,12 +226,15 @@ namespace Backend
         auto* rawHandle = static_cast<ssGUI::Backend::X11RawHandle*>(
                             ssGUI::Backend::BackendManager::GetMainWindowInterface(0)->GetRawHandle());
                 
-        glXSwapBuffers(rawHandle->WindowDisplay, rawHandle->WindowId);        
-        ClearBackBuffer(clearColor);
+        glXSwapBuffers(rawHandle->WindowDisplay, rawHandle->WindowId);
+        //OpenGLCommon->ClearBackBuffer(clearColor);
+        //ClearBackBuffer(clearColor);
     }
 
-    void BackendDrawingX11_OpenGL3_3::ClearBackBuffer(glm::u8vec3 clearColor) 
+    void BackendDrawingX11_OpenGL3_3::ClearBackBuffer(glm::u8vec3 clearColor)
     {
+        
+        
         GL_CHECK_ERROR( glClear(GL_COLOR_BUFFER_BIT); );
         
         GL_CHECK_ERROR( glClearColor(   static_cast<float>(clearColor.r) / 255.f, 

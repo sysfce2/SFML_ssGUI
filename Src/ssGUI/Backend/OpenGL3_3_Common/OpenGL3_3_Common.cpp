@@ -6,6 +6,7 @@
 #include "ssGUI/HelperClasses/LogWithTagsAndLevel.hpp"
 //#include "glm/gtc/matrix_transform.hpp"
 #include "ssGUI/DataClasses/DrawingEntity.hpp"
+#include <memory>
 
 #define GL_CHECK_ERROR(x)\
 {\
@@ -18,6 +19,9 @@
     }\
 }
 
+GLuint PRIMITIVE_RESTART = 543210; // magic value
+
+
 namespace ssGUI
 {
 
@@ -27,15 +31,13 @@ namespace Backend
     R"(
         #version 330 core
         
-        in vec3 vertPos;
-        in vec4 vertColor;
-        in vec3 vertTexCoord;
-        in int vertIsUV;
-        in vec2 vertTexTopLeft;
-        in vec2 vertTexBotRight;
+        layout (location = 0) in vec2 vertPos;
+        layout (location = 1) in vec4 vertColor;
+        layout (location = 2) in vec3 vertTexCoord;
+        layout (location = 3) in vec2 vertTexTopLeft;
+        layout (location = 4) in vec2 vertTexBotRight;
 
         out vec4 fragColor;
-        flat out int fragIsUV;
         out vec3 fragTexCoord;
         out vec2 fragTexTopLeft;
         out vec2 fragTexBotRight;
@@ -44,11 +46,10 @@ namespace Backend
 
         void main()
         {
-            gl_Position = vec4(vertPos, 1.0);
-            gl_Position = projMatrix * gl_Position;
+            gl_Position = vec4(vertPos, 0.0, 1.0);
+            //gl_Position = projMatrix * vec4(vertPos, 0.0, 1.0);
             
             fragColor = vertColor;
-            fragIsUV = vertIsUV;
             fragTexCoord = vertTexCoord;
             fragTexTopLeft = vertTexTopLeft;
             fragTexBotRight = vertTexBotRight;
@@ -64,7 +65,6 @@ namespace Backend
         out vec4 outColor;
         
         in vec4 fragColor;
-        flat in int fragIsUV;
         in vec3 fragTexCoord;
         in vec2 fragTexTopLeft;
         in vec2 fragTexBotRight;
@@ -85,18 +85,28 @@ namespace Backend
 
         void main()
         {
-            if(fragIsUV > 0)
+            //if(fragTexTopLeft.x < 0)
             {
-                outColor = fragColor;
+                //outColor = fragColor / 255.f;
+                outColor = vec4(1, 0, 0, 1);
                 return;
             }
+            
+            //Normalizing texture coordinates
+            vec3 fragTexCoordNormalized = fragTexCoord;
+            vec2 fragTexTopLeftNormalized = fragTexTopLeft;
+            vec2 fragTexBotRightNormalized = fragTexBotRight;
+            
+            fragTexCoordNormalized.xy /= textureSize(ourTexture, 0).xy;
+            fragTexTopLeftNormalized.xy /= textureSize(ourTexture, 0).xy;
+            fragTexBotRightNormalized.xy /= textureSize(ourTexture, 0).xy;
             
             float mipmapLevel = 0;
         
             #ifdef GL_ARB_texture_query_lod
-                mipmapLevel = textureQueryLOD(ourTexture, vec2(fragTexCoord.x, fragTexCoord.y)).x;
+                mipmapLevel = textureQueryLOD(ourTexture, vec2(fragTexCoordNormalized.x, fragTexCoordNormalized.y)).x;
             #else
-                mipmapLevel = mip_map_level(fragTexCoord.xy * textureSize(ourTexture, 0).xy);
+                mipmapLevel = mip_map_level(fragTexCoordNormalized.xy * textureSize(ourTexture, 0).xy);
             #endif
             
             int roundedMipmapLevel = int(mipmapLevel + 0.5f);
@@ -104,12 +114,12 @@ namespace Backend
             //If mipmap level is 0, don't need to do anything
             if(roundedMipmapLevel == 0)
             {
-                outColor = texture(ourTexture, fragTexCoord) * fragColor;
+                outColor = texture(ourTexture, fragTexCoordNormalized) * fragColor;
                 return;
             }
             
             //Otherwise get the localized UV
-            vec2 localTexCoord = (fragTexCoord.xy - fragTexTopLeft) / (fragTexBotRight - fragTexTopLeft);
+            vec2 localTexCoord = (fragTexCoordNormalized.xy - fragTexTopLeftNormalized) / (fragTexBotRightNormalized - fragTexTopLeftNormalized);
             
             //And multiply by 0.5 ^ mipmap level
             float mipmapMultiplier = pow(0.5f, float(roundedMipmapLevel));
@@ -118,107 +128,108 @@ namespace Backend
             //  with this (modified) formula: (1 - 0.5 ^ mipmapLevel) / (1 - 0.5) - 1
             float mipmapYOffsetMultiplier = (1 - mipmapMultiplier) / 0.5f - 1;
             
-            vec3 mipmapTexCoord = vec3( fragTexBotRight.x + localTexCoord.x * mipmapMultiplier, 
-                                        fragTexTopLeft.y + mipmapYOffsetMultiplier + localTexCoord.y * mipmapMultiplier,
-                                        fragTexCoord.z);
+            vec3 mipmapTexCoord = vec3( fragTexBotRightNormalized.x + localTexCoord.x * mipmapMultiplier, 
+                                        fragTexTopLeftNormalized.y + mipmapYOffsetMultiplier + localTexCoord.y * mipmapMultiplier,
+                                        fragTexCoordNormalized.z);
         
             outColor = texture(ourTexture, mipmapTexCoord) * fragColor;
         }  
     )";
 
 
-    bool OpenGL3_3_Common::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::vec2>& texCoords,
-                                                const std::vector<glm::u8vec4>& colors,
-                                                const uint32_t character,
-                                                const ssGUI::Backend::BackendFontInterface& font,
-                                                int characterSize)
+    bool OpenGL3_3_Common::DrawShape(   const std::vector<glm::vec2>& vertices, 
+                                        const std::vector<glm::vec2>& texCoords,
+                                        const std::vector<glm::u8vec4>& colors,
+                                        const uint32_t character,
+                                        const ssGUI::Backend::BackendFontInterface& font,
+                                        int characterSize)
     {
-        #if 0
         if(!font.IsValid())
             return false;
     
         auto& rawFont = const_cast<ssGUI::Backend::BackendFontInterface&>(font);
 
-        ssGUI::ImageData charImgData;
-        if(!rawFont.GetCharacterImage(character, characterSize, charImgData))
+        CharTextureIdentifier curIdentifier = CharTextureIdentifier(&rawFont, characterSize, character);
+        
+        if(MappedFontIds.find(curIdentifier) == MappedFontIds.end())
+        {
+            if(!AddFontCache(curIdentifier))
+                return false;
+        }
+        
+        int atlasId = MappedFontIds.at(curIdentifier);
+        
+        DynamicImageAtlas::ImageAtlasImageInfo returnInfo;
+        if(!CurrentImageAtlas->GetImageInfo(atlasId, returnInfo))
             return false;
 
-        CurrentMainWindow->SetGLContext();
-    
-        glm::ivec2 imgSize = charImgData.GetSize();
-        CharTextureIdentifier curIdentifier = CharTextureIdentifier(&rawFont, characterSize, character);
-
-        if(CharTextures.find(curIdentifier) == CharTextures.end())
-        {
-            GLuint textureId = 0;
-
-            GL_CHECK_ERROR( glGenTextures(1, &textureId); );
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, textureId); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); );
-
-            //Convert it to rgba32
-            uint8_t* rgba32Img = new uint8_t[charImgData.GetSize().x * charImgData.GetSize().y * 4];
-            ssGUI::ImageFormat format;
-            void* rawPixel = charImgData.GetPixelPtr(format);
-            
-            if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img), rawPixel, format, imgSize))
-            {
-                delete[] rgba32Img;
-                GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-                return false;
-            }
-            
-            GL_CHECK_ERROR( glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imgSize.x, imgSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
-                            rgba32Img); );
-
-            CharTextures[curIdentifier] = textureId;
-
-            delete[] rgba32Img;
-        }
-        else
-        {
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, CharTextures[curIdentifier]); );
-        }
-         
-        GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D); );
-        GL_CHECK_ERROR( glEnable(GL_BLEND); );
-        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-        glBegin(GL_TRIANGLE_FAN);
-
+        Vertices.insert(Vertices.end(), vertices.begin(), vertices.end());
+        Colors.insert(Colors.end(), colors.begin(), colors.end());
+        
+        GLuint startIndex = TexCoords.size();
+        TexCoords.insert(TexCoords.end(), vertices.size(), returnInfo.LocationInPixel);
+        
+        for(int i = startIndex; i < TexCoords.size(); i++)
+            TexCoords.at(i) += glm::vec3(texCoords.at(i - startIndex), 0);
+        
+        TextureTopLeftCoords.insert(TextureTopLeftCoords.end(), vertices.size(), returnInfo.LocationInPixel);
+        TextureBotRightCoords.insert(TextureBotRightCoords.end(), vertices.size(), returnInfo.LocationInPixel + glm::ivec3(returnInfo.ImageSizeInPixel, 0));
+        
+        startIndex = Vertices.size() - vertices.size();
         for(int i = 0; i < vertices.size(); i++)
-        {
-            glm::vec2 texCoord = texCoords[i];
-
-            texCoord.x /= imgSize.x;
-            texCoord.y /= imgSize.y;
-            
-            glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-            glTexCoord2f(texCoord.x, texCoord.y);
-            //The reason for rounding the position is because it seems like the UV is shifting in floating points, at least for now
-            glVertex3f(round(vertices[i].x), round(vertices[i].y), 0);
-        }
-
-        GL_CHECK_ERROR( glEnd(); );
-        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-        GL_CHECK_ERROR( glFlush(); );
-        #endif
+            Idx.push_back(startIndex + i);
+        
+        Idx.push_back(PRIMITIVE_RESTART);
         
         return true;        
     }
 
-    bool OpenGL3_3_Common::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::vec2>& texCoords,
-                                                const std::vector<glm::u8vec4>& colors,
-                                                const ssGUI::Backend::BackendImageInterface& image)
+    bool OpenGL3_3_Common::DrawShape(   const std::vector<glm::vec2>& vertices, 
+                                        const std::vector<glm::vec2>& texCoords,
+                                        const std::vector<glm::u8vec4>& colors,
+                                        const ssGUI::Backend::BackendImageInterface& image)
     {
-        ssLOG_LINE();
-    
-        #if 1
+        if(!image.IsValid())
+            return false;
+        
+        if(MappedImgIds.find((ssGUI::Backend::BackendImageInterface*)&image) == MappedImgIds.end())
+        {
+            if(!AddImageCache((ssGUI::Backend::BackendImageInterface*)&image))
+                return false;
+        }
+        
+        int atlasId = MappedImgIds.at((ssGUI::Backend::BackendImageInterface*)&image);
+        
+        DynamicImageAtlas::ImageAtlasImageInfo returnInfo;
+        if(!CurrentImageAtlas->GetImageInfo(atlasId, returnInfo))
+            return false;
+        
+        //Vertices.insert(Vertices.end(), vertices.begin(), vertices.end());
+        
+        for(int i = 0; i < vertices.size(); i++)
+        {
+            Vertices.push_back(vertices.at(i) / glm::vec2(CurrentMainWindow->GetWindowSize()));
+        }
+        
+        Colors.insert(Colors.end(), colors.begin(), colors.end());
+        
+        GLuint startIndex = TexCoords.size();
+        TexCoords.insert(TexCoords.end(), vertices.size(), returnInfo.LocationInPixel);
+        
+        for(int i = startIndex; i < TexCoords.size(); i++)
+            TexCoords.at(i) += glm::vec3(texCoords.at(i - startIndex), 0);
+
+        TextureTopLeftCoords.insert(TextureTopLeftCoords.end(), vertices.size(), returnInfo.LocationInPixel);
+        TextureBotRightCoords.insert(TextureBotRightCoords.end(), vertices.size(), returnInfo.LocationInPixel + glm::ivec3(returnInfo.ImageSizeInPixel, 0));
+        
+        startIndex = Vertices.size() - vertices.size();
+        for(int i = 0; i < vertices.size(); i++)
+            Idx.push_back(startIndex + i);
+        
+        Idx.push_back(PRIMITIVE_RESTART);
+
+
+        #if 0
             CurrentMainWindow->SetGLContext();
 
             if(!image.IsValid())
@@ -274,7 +285,6 @@ namespace Backend
             
             glm::ivec2 imgSize = image.GetSize();
             
-            //TODO: Remove const cast
             //If unable to add to cache, return
             //if(ImageTextures.find(const_cast<ssGUI::Backend::BackendImageInterface*>(&image)) == ImageTextures.end())
             //    return false;
@@ -325,82 +335,34 @@ namespace Backend
             GL_CHECK_ERROR( glEnd(); );
             GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0); );
             GL_CHECK_ERROR( glFlush(); );
-        #else
-            CurrentMainWindow->SetGLContext();
-
-            if(!image.IsValid())
-                return false;
-
-            //GL_CHECK_ERROR( glUseProgram(ProgramId); );
-            
-            AddImageCache(const_cast<ssGUI::Backend::BackendImageInterface*>(&image));
-            
-            glm::ivec2 imgSize = image.GetSize();
-            
-            //TODO: Remove const cast
-            //If unable to add to cache, return
-            //if(ImageTextures.find(const_cast<ssGUI::Backend::BackendImageInterface*>(&image)) == ImageTextures.end())
-            //    return false;
-            //else
-            //    GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, ImageTextures[const_cast<ssGUI::Backend::BackendImageInterface*>(&image)]); );
-
-            //render it
-            GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D); );
-            GL_CHECK_ERROR( glEnable(GL_BLEND); );
-            GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-            glBegin(GL_TRIANGLE_FAN);
-
-            for(int i = 0; i < vertices.size(); i++)
-            {
-                glm::vec2 texCoord = texCoords[i];
-
-                texCoord.x /= imgSize.x;
-                texCoord.y /= imgSize.y;
-                //glTexCoord2f(texCoord.x, texCoord.y);
-
-                //glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                glColor4ub(255, colors[i].g, colors[i].b, colors[i].a);
-
-                //The reason for rounding the position is because it seems like the UV is shifting in floating points, at least for now
-                glVertex3f(round(vertices[i].x), round(vertices[i].y), 0);
-            }
-
-
-            GL_CHECK_ERROR( glEnd(); );
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-            GL_CHECK_ERROR( glFlush(); );
         #endif
 
         return true;    
     }
 
 
-    bool OpenGL3_3_Common::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::u8vec4>& colors)
+    bool OpenGL3_3_Common::DrawShape(   const std::vector<glm::vec2>& vertices, 
+                                        const std::vector<glm::u8vec4>& colors)
     {
-        CurrentMainWindow->SetGLContext();
-
-        GL_CHECK_ERROR( glEnable(GL_BLEND); );
-        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-        glBegin(GL_TRIANGLE_FAN);
-
+        Vertices.insert(Vertices.end(), vertices.begin(), vertices.end());
+        //for(int i = 0; i < vertices.size(); i++)
+        //{
+        //    Vertices.push_back(vertices.at(i) / glm::vec2(CurrentMainWindow->GetWindowSize()));
+        //}
+        
+        Colors.insert(Colors.end(), colors.begin(), colors.end());
+        TexCoords.insert(TexCoords.end(), vertices.size(), glm::vec3(-1, -1, -1));
+        TextureTopLeftCoords.insert(TextureTopLeftCoords.end(), vertices.size(), glm::vec3(-1, -1, -1));
+        TextureBotRightCoords.insert(TextureBotRightCoords.end(), vertices.size(), glm::vec3(-1, -1, -1));
+        
+        GLuint startIndex = Vertices.size() - vertices.size();
         for(int i = 0; i < vertices.size(); i++)
-        {
-            glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);   
-            glVertex3f(vertices[i].x, vertices[i].y, 0);
-        }
+            Idx.push_back(startIndex + i);
+        
+        Idx.push_back(PRIMITIVE_RESTART);
 
-        GL_CHECK_ERROR( glEnd(); );
-        GL_CHECK_ERROR( glFlush(); );
 
         return true;
-    }
-    
-    void OpenGL3_3_Common::DrawShapesToBackBuffer()
-    {
-        //TODO   
     }
     
     bool OpenGL3_3_Common::OnNewAtlasRequest()
@@ -411,20 +373,291 @@ namespace Backend
     
     void OpenGL3_3_Common::SaveLastViewport()
     {
-        //TODO        
+        GL_CHECK_ERROR( glGetIntegerv(GL_VIEWPORT, LastViewportProperties) );
     }
     
     void OpenGL3_3_Common::LoadLastViewport()
     {
-        //TODO        
+        GL_CHECK_ERROR( glViewport( LastViewportProperties[0], 
+                                    LastViewportProperties[1], 
+                                    (GLsizei)LastViewportProperties[2], 
+                                    (GLsizei)LastViewportProperties[3]) );
     }
     
+    template<typename T>
+    bool OpenGL3_3_Common::AddDrawingCache(std::unordered_map<T, int>& cachedIds, T key, glm::ivec2 textureSize, const void* rgba32Pixels)
+    {
+        if(cachedIds.find(key) != cachedIds.end())
+            return false;
+
+        CurrentMainWindow->SetGLContext();
+
+        {
+            //Allocate space on atlas
+            DynamicImageAtlas::ImageAtlasImageInfo imgInfo;
+            imgInfo.ImageSizeInPixel = textureSize;
+            imgInfo.HasMipmap = true;
+            int imgId;
+            
+            if(!CurrentImageAtlas->RequestImage(imgInfo, imgId))
+            {
+                ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to request atlas image");
+                return false;
+            }
+            
+            if(!CurrentImageAtlas->GetImageInfo(imgId, imgInfo))
+            {
+                ssGUI_ERROR("Internal error, ImageAtlas failed internally");
+                return false;
+            }
+            
+            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, CachedImages) );
+            
+            //Write the image data to the texture
+            GL_CHECK_ERROR( glTexSubImage3D(GL_TEXTURE_2D_ARRAY,
+                                            0, 
+                                            imgInfo.LocationInPixel.x, 
+                                            imgInfo.LocationInPixel.y, 
+                                            imgInfo.LocationInPixel.z,
+                                            imgInfo.ImageSizeInPixel.x,
+                                            imgInfo.ImageSizeInPixel.y,
+                                            1,
+                                            GL_RGBA,
+                                            GL_UNSIGNED_BYTE,
+                                            rgba32Pixels) );
+                                            
+            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
+            
+            #if 0
+            //================================================================================
+            //DEBUG
+            //================================================================================
+            GLuint debugFBO = 0;
+            GL_CHECK_ERROR( glGenFramebuffers(1, &debugFBO) );
+            GL_CHECK_ERROR( glBindFramebuffer(GL_FRAMEBUFFER, debugFBO) );
+            
+            
+            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_FRAMEBUFFER, 
+                                                        GL_COLOR_ATTACHMENT0, 
+                                                        CachedImages,
+                                                        0,
+                                                        imgInfo.LocationInPixel.z) );
+                                                        
+            if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
+            
+            uint8_t fboPixels[5 * 4];
+            GL_CHECK_ERROR( glReadPixels(0, 0, 5, 1, GL_RGBA,  GL_UNSIGNED_BYTE, fboPixels) );
+            
+            
+            
+            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_FRAMEBUFFER, 
+                                                        GL_COLOR_ATTACHMENT0, 
+                                                        0,
+                                                        0,
+                                                        0) );
+            
+            for(int i = 0; i < 5; i++)
+            {
+                ssLOG_LINE("fboPixels[" << i << "]: "<<(int)fboPixels[i * 4 + 0] <<", "<<(int)fboPixels[i * 4 + 1] <<", "<<(int)fboPixels[i * 4 + 2]<<", "<<(int)fboPixels[i * 4 + 3]);
+            }
+            
+            GL_CHECK_ERROR( glBindFramebuffer(GL_FRAMEBUFFER, 0) );
+            
+            GL_CHECK_ERROR( glDeleteFramebuffers(1, &debugFBO) );
+            
+            //================================================================================
+            //DEBUG ENDS
+            //================================================================================
+            #endif
+            
+            cachedIds[key] = imgId;
+            
+            if(textureSize.x == 1 || textureSize.y == 1)
+                return false;
+
+            glm::ivec2 lastMipmapSize = textureSize;
+            glm::ivec2 lastMipmampPixelPosOffset = glm::ivec2(0, 0);
+            glm::ivec2 currentMipmampPixelPosOffset = glm::ivec2(lastMipmapSize.x, 0);
+            
+            const int MAX_LOOP = 100;
+            const int READ_FB = 0;
+            const int DRAW_FB = 1;
+            
+            GLuint readDrawFramebuffers[2] = {0, 0};
+            
+            GL_CHECK_ERROR( glGenFramebuffers(2, readDrawFramebuffers) );
+            GL_CHECK_ERROR( glBindFramebuffer(GL_READ_FRAMEBUFFER, readDrawFramebuffers[READ_FB]) );
+            GL_CHECK_ERROR( glBindFramebuffer(GL_DRAW_FRAMEBUFFER, readDrawFramebuffers[DRAW_FB]) );
+
+            GLuint mipmapRenderbuffer = 0;
+            GL_CHECK_ERROR( glGenRenderbuffers(1, &mipmapRenderbuffer) );
+            GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, mipmapRenderbuffer) );
+
+            //Finally, generates mipmap for it
+            for(int i = 0; i < MAX_LOOP; i++)
+            {
+                //Last mipmap, no need to continue
+                if(lastMipmapSize.x / 2 <= 0 || lastMipmapSize.y / 2 <= 0)
+                    break;
+            
+                //Generate mipmap to a render buffer    
+                GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_READ_FRAMEBUFFER, 
+                                                            GL_COLOR_ATTACHMENT0, 
+                                                            CachedImages,
+                                                            0,
+                                                            imgInfo.LocationInPixel.z) );
+
+                if(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
+
+                GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, mipmapRenderbuffer) );
+                GL_CHECK_ERROR( glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, lastMipmapSize.x / 2, lastMipmapSize.y / 2) );
+                GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, 0) );
+
+                GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_DRAW_FRAMEBUFFER, 
+                                                            GL_COLOR_ATTACHMENT0, 
+                                                            GL_RENDERBUFFER, 
+                                                            mipmapRenderbuffer) );
+                
+                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
+
+                GL_CHECK_ERROR( glBlitFramebuffer(  lastMipmampPixelPosOffset.x, 
+                                                    lastMipmampPixelPosOffset.y, 
+                                                    lastMipmampPixelPosOffset.x + lastMipmapSize.x, 
+                                                    lastMipmampPixelPosOffset.y + lastMipmapSize.y, 
+                                                    0, 
+                                                    0, 
+                                                    lastMipmapSize.x / 2, 
+                                                    lastMipmapSize.y / 2,
+                                                    GL_COLOR_BUFFER_BIT, 
+                                                    GL_LINEAR) );
+
+                //Then copy the mipmap render buffer to the atlas
+                GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_READ_FRAMEBUFFER, 
+                                                            GL_COLOR_ATTACHMENT0, 
+                                                            GL_RENDERBUFFER, 
+                                                            mipmapRenderbuffer) );
+
+                if(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
+
+                GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_DRAW_FRAMEBUFFER, 
+                                                            GL_COLOR_ATTACHMENT0, 
+                                                            CachedImages,
+                                                            0,
+                                                            imgInfo.LocationInPixel.z) );
+
+                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
+
+                GL_CHECK_ERROR( glBlitFramebuffer(  0, 
+                                                    0, 
+                                                    lastMipmapSize.x / 2, 
+                                                    lastMipmapSize.y / 2,
+                                                    currentMipmampPixelPosOffset.x,
+                                                    currentMipmampPixelPosOffset.y, 
+                                                    currentMipmampPixelPosOffset.x + lastMipmapSize.x / 2, 
+                                                    currentMipmampPixelPosOffset.y + lastMipmapSize.y / 2, 
+                                                    GL_COLOR_BUFFER_BIT, 
+                                                    GL_NEAREST) );
+                
+                lastMipmapSize /= 2;
+                lastMipmampPixelPosOffset = currentMipmampPixelPosOffset;
+                currentMipmampPixelPosOffset += glm::ivec2(0, lastMipmapSize.y);
+                
+                if(i == MAX_LOOP - 1)
+                {
+                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "MAX_LOOP reached, internal error!!");
+                    GL_CHECK_ERROR( glDeleteFramebuffers(2, readDrawFramebuffers) );
+                    return false;
+                }
+            }
+            
+            //Cleaning up framebuffers and render buffer
+            GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_READ_FRAMEBUFFER, 
+                                                        GL_COLOR_ATTACHMENT0, 
+                                                        GL_RENDERBUFFER, 
+                                                        0) );
+
+            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_DRAW_FRAMEBUFFER, 
+                                                        GL_COLOR_ATTACHMENT0, 
+                                                        0,
+                                                        0,
+                                                        0) );
+            
+            GL_CHECK_ERROR( glBindFramebuffer(GL_READ_FRAMEBUFFER, 0) );
+            GL_CHECK_ERROR( glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0) );
+
+            GL_CHECK_ERROR( glDeleteRenderbuffers(1, &mipmapRenderbuffer) );
+            GL_CHECK_ERROR( glDeleteFramebuffers(2, readDrawFramebuffers) );
+        }
+    
+        return true;
+    }
+    
+    template<typename T>
+    bool OpenGL3_3_Common::RemoveDrawingCache(std::unordered_map<T, int>& cachedIds, T key)
+    {
+        auto it = cachedIds.find(key); 
+        
+        if(it == cachedIds.end())
+            return false;
+            
+        CurrentImageAtlas->RemoveImage(it->second);
+    
+        cachedIds.erase(it);
+    
+        return true;
+    }
+    
+    //Explicit template instantiations
+    template bool OpenGL3_3_Common::AddDrawingCache(std::unordered_map<ssGUI::Backend::BackendImageInterface*, int>& cachedIds, 
+                                                    ssGUI::Backend::BackendImageInterface* key,
+                                                    glm::ivec2 textureSize, 
+                                                    const void* rgba32Pixels);
+    
+    template bool OpenGL3_3_Common::AddDrawingCache(std::unordered_map<OpenGL3_3_Common::CharTextureIdentifier, int>& cachedIds, 
+                                                    OpenGL3_3_Common::CharTextureIdentifier key,
+                                                    glm::ivec2 textureSize, 
+                                                    const void* rgba32Pixels);
+
+    template bool OpenGL3_3_Common::RemoveDrawingCache( std::unordered_map<ssGUI::Backend::BackendImageInterface*, int>& cachedIds, 
+                                                        ssGUI::Backend::BackendImageInterface* key);
+    
+    
+    template bool OpenGL3_3_Common::RemoveDrawingCache( std::unordered_map<OpenGL3_3_Common::CharTextureIdentifier*, int>& cachedIds, 
+                                                        OpenGL3_3_Common::CharTextureIdentifier* key);
+
     OpenGL3_3_Common::OpenGL3_3_Common( BackendMainWindowInterface* mainWindow,
                                         BackendDrawingInterface* drawingBackend) :  ProgramId(0),
                                                                                     CachedImages(0),
+                                                                                    VAO(0),
+                                                                                    EBO(0),
+                                                                                    VertsVBO(0),
+                                                                                    ColorsVBO(0),
+                                                                                    TexCoordsVBO(0),
+                                                                                    TopLeftTexCoordsVBO(0),
+                                                                                    BotRightTexCoordsVBO(0),
+                                                                                    LastViewportProperties(),
+                                                                                    Vertices(),
+                                                                                    Colors(),
+                                                                                    TexCoords(),
+                                                                                    TextureTopLeftCoords(),
+                                                                                    TextureBotRightCoords(),
+                                                                                    Idx(),
                                                                                     CurrentMainWindow(nullptr),
+                                                                                    CurrentDrawingBackend(nullptr),
                                                                                     LastMainWindowSize(),
-                                                                                    CurrentImageAtlas(nullptr)
+                                                                                    CurrentImageAtlas(nullptr),
+                                                                                    MappedImgIds(),
+                                                                                    MappedFontIds(),
+                                                                                    VERT_POS_INDEX(0),
+                                                                                    VERT_COLOR_INDEX(1),
+                                                                                    VERT_TEX_COORD_INDEX(2),
+                                                                                    VERT_TEX_TOP_LEFT_INDEX(3),
+                                                                                    VERT_TEX_BOT_RIGHT_INDEX(4)
     {
         CurrentMainWindow = mainWindow;
         CurrentDrawingBackend = drawingBackend;
@@ -531,29 +764,49 @@ namespace Backend
         GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
         
         //Generate ID for EBO that uses it
-        GL_CHECK_ERROR( glGenBuffers(1, &EBO) );
+        //GL_CHECK_ERROR( glGenBuffers(1, &EBO) );
         
         //Generate ID for VBOs for vertex pos, colors, UVs and UseUVs flag
         GL_CHECK_ERROR( glGenBuffers(1, &VertsVBO) );
         GL_CHECK_ERROR( glGenBuffers(1, &ColorsVBO) );
-        GL_CHECK_ERROR( glGenBuffers(1, &UVsVBO) );
-        GL_CHECK_ERROR( glGenBuffers(1, &UseUVsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &TexCoordsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &TopLeftTexCoordsVBO) );
+        GL_CHECK_ERROR( glGenBuffers(1, &BotRightTexCoordsVBO) );
         
         //Generate ID for VAO and bind VBOs and EBO created above to this VAO
         GL_CHECK_ERROR( glGenVertexArrays(1, &VAO) );
         
+        //GLint location = 0;
+        GL_CHECK_ERROR( glBindAttribLocation(ProgramId, VERT_POS_INDEX, "vertPos") );
+        //GL_CHECK_ERROR( location = glGetAttribLocation(ProgramId, "vertPos"))
         GL_CHECK_ERROR( glBindVertexArray(VAO) );
         GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, VertsVBO) );
-        GL_CHECK_ERROR( glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glVertexAttribPointer(VERT_POS_INDEX, 2, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glEnableVertexAttribArray(VERT_POS_INDEX) );
         
+        GL_CHECK_ERROR( glBindAttribLocation(ProgramId, VERT_COLOR_INDEX, "vertColor") );
+        //GL_CHECK_ERROR( location = glGetAttribLocation(ProgramId, "vertColor"))
         GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, ColorsVBO) );
-        GL_CHECK_ERROR( glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glVertexAttribPointer(VERT_COLOR_INDEX, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glEnableVertexAttribArray(VERT_COLOR_INDEX) );
         
-        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, UVsVBO) );
-        GL_CHECK_ERROR( glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glBindAttribLocation(ProgramId, VERT_TEX_COORD_INDEX, "vertTexCoord") );
+        //GL_CHECK_ERROR( location = glGetAttribLocation(ProgramId, "vertTexCoord"))
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, TexCoordsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(VERT_TEX_COORD_INDEX, 3, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glEnableVertexAttribArray(VERT_TEX_COORD_INDEX) );
 
-        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, UseUVsVBO) );
-        GL_CHECK_ERROR( glVertexAttribPointer(3, 1,  GL_INT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glBindAttribLocation(ProgramId, VERT_TEX_TOP_LEFT_INDEX, "vertTexTopLeft") );
+        //GL_CHECK_ERROR( location = glGetAttribLocation(ProgramId, "vertTexTopLeft"))
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, TopLeftTexCoordsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(VERT_TEX_TOP_LEFT_INDEX, 3, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glEnableVertexAttribArray(VERT_TEX_TOP_LEFT_INDEX) );
+
+        GL_CHECK_ERROR( glBindAttribLocation(ProgramId, VERT_TEX_BOT_RIGHT_INDEX, "vertTexBotRight") );
+        //GL_CHECK_ERROR( location = glGetAttribLocation(ProgramId, "vertTexBotRight"))
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, BotRightTexCoordsVBO) );
+        GL_CHECK_ERROR( glVertexAttribPointer(VERT_TEX_BOT_RIGHT_INDEX, 3, GL_FLOAT, GL_FALSE, 0, 0) );
+        GL_CHECK_ERROR( glEnableVertexAttribArray(VERT_TEX_BOT_RIGHT_INDEX) );
 
         GL_CHECK_ERROR( glBindVertexArray(0) );
         GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, 0) );
@@ -598,6 +851,18 @@ namespace Backend
         GL_CHECK_ERROR( glLoadIdentity(); );
         glm::mat4x4 orthoMat = glm::ortho<float>(0.f, widthHeight.x, widthHeight.y, 0.f, 0, 10);
         GL_CHECK_ERROR( glMultMatrixf(glm::value_ptr(orthoMat)); );
+        
+        ssLOG_LINE("Width: "<<widthHeight.x);
+        ssLOG_LINE("Height: "<<widthHeight.y);
+        {
+            ssLOG_LINE("orthoMat: "<<orthoMat[0][0]<<", "<<orthoMat[1][0]<<", "<<orthoMat[2][0]<<", "<<orthoMat[3][0]); 
+            ssLOG_LINE("orthoMat: "<<orthoMat[0][1]<<", "<<orthoMat[1][1]<<", "<<orthoMat[2][1]<<", "<<orthoMat[3][1]); 
+            ssLOG_LINE("orthoMat: "<<orthoMat[0][2]<<", "<<orthoMat[1][2]<<", "<<orthoMat[2][2]<<", "<<orthoMat[3][2]); 
+            ssLOG_LINE("orthoMat: "<<orthoMat[0][3]<<", "<<orthoMat[1][3]<<", "<<orthoMat[2][3]<<", "<<orthoMat[3][3]); 
+        
+        }
+        //ssLOG_LINE("orthoMat:")
+        
         return orthoMat;
     }
     
@@ -655,8 +920,8 @@ namespace Backend
         if(CurrentMainWindow->IsClosed())
             return false;
 
-        glm::mat4x4 orthMat = UpdateViewPortAndModelView(CurrentMainWindow->GetRenderSize());
-        (void)orthMat;
+        //glm::mat4x4 orthMat = UpdateViewPortAndModelView(CurrentMainWindow->GetRenderSize());
+        //(void)orthMat;
 
         //Start drawing
         for(int i = 0; i < entities.size(); i++)
@@ -694,273 +959,155 @@ namespace Backend
         return true;
     }
     
-    void OpenGL3_3_Common::AddImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
+    bool OpenGL3_3_Common::AddFontCache(OpenGL3_3_Common::CharTextureIdentifier charTexture)
+    {
+        if(!std::get<0>(charTexture)->IsValid())
+            return false;
+
+        if(MappedFontIds.find(charTexture) != MappedFontIds.end())
+            return true;
+
+        auto& rawFont = const_cast<ssGUI::Backend::BackendFontInterface&>(*std::get<0>(charTexture));
+
+        ssGUI::ImageData charImgData;
+        if(!rawFont.GetCharacterImage(std::get<2>(charTexture), std::get<1>(charTexture), charImgData))
+            return false;
+
+        glm::ivec2 imgSize = charImgData.GetSize();
+
+        //Convert it to rgba32
+        auto rgba32Img = std::unique_ptr<uint8_t[]>(new uint8_t[imgSize.x * imgSize.y * 4]);
+        ssGUI::ImageFormat format;
+        void* rawPixel = charImgData.GetPixelPtr(format);
+        
+        if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img.get()), rawPixel, format, imgSize))
+            return false;
+
+        if(!AddDrawingCache(MappedFontIds, charTexture, imgSize, rgba32Img.get()))
+            return false;
+
+        return true;
+    }
+    
+    bool OpenGL3_3_Common::AddImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
     {
         if(!backendImage->IsValid())
-            return;
+            return false;
     
         if(MappedImgIds.find(backendImage) != MappedImgIds.end())
+            return true;
+    
+        //Get image
+        ssGUI::ImageFormat format;
+        const void* rawPtr =  backendImage->GetPixelPtr(format);
+
+        //Convert it to rgba32
+        auto rgba32Img = std::unique_ptr<uint8_t[]>(new uint8_t[backendImage->GetSize().x * backendImage->GetSize().y * 4]);
+        if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img.get()), rawPtr, format, backendImage->GetSize()))
+            return false;
+
+        if(!AddDrawingCache(MappedImgIds, backendImage, backendImage->GetSize(), rgba32Img.get()))
+            return false;
+    
+        backendImage->Internal_AddBackendDrawingRecord(CurrentDrawingBackend);
+        return true;
+    }
+    
+    void OpenGL3_3_Common::RemoveFontCache(CharTextureIdentifier charTexture)
+    {
+        if(MappedFontIds.find(charTexture) == MappedFontIds.end())
             return;
             
-        ssLOG_LINE();
-            
-        {
-            //Allocate space on atlas
-            DynamicImageAtlas::ImageAtlasImageInfo imgInfo;
-            imgInfo.ImageSizeInPixel = backendImage->GetSize();
-            imgInfo.HasMipmap = true;
-            int imgId;
-            
-            if(!CurrentImageAtlas->RequestImage(imgInfo, imgId))
-            {
-                ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to request atlas image");
-                return;
-            }
-            
-            if(!CurrentImageAtlas->GetImageInfo(imgId, imgInfo))
-            {
-                ssGUI_ERROR("Internal error, ImageAtlas failed internally");
-                return;
-            }
-            
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, CachedImages) );
-            
-            //Get image
-            ssGUI::ImageFormat format;
-            const void* rawPtr = backendImage->GetPixelPtr(format);
-
-            //Convert it to rgba32
-            uint8_t* rgba32Img = new uint8_t[backendImage->GetSize().x * backendImage->GetSize().y * 4];
-            if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img), rawPtr, format, backendImage->GetSize()))
-            {
-                delete[] rgba32Img;
-                return;
-            }
-            
-            //Write the image data to the texture
-            ssLOG_LINE("imgInfo: "<<imgInfo);
-            
-            for(int i = 0; i < 5; i++)
-            {
-                ssLOG_LINE("rgba32Img[" << i << "]: "<<(int)rgba32Img[i * 4 + 0] <<", "<<(int)rgba32Img[i * 4 + 1] <<", "<<(int)rgba32Img[i * 4 + 2]<<", "<<(int)rgba32Img[i * 4 + 3]);
-            }
-            
-            GL_CHECK_ERROR( glTexSubImage3D(GL_TEXTURE_2D_ARRAY,
-                                            0, 
-                                            imgInfo.LocationInPixel.x, 
-                                            imgInfo.LocationInPixel.y, 
-                                            imgInfo.LocationInPixel.z,
-                                            imgInfo.ImageSizeInPixel.x,
-                                            imgInfo.ImageSizeInPixel.y,
-                                            1,
-                                            GL_RGBA,
-                                            GL_UNSIGNED_BYTE,
-                                            rgba32Img) );
-                                            
-            delete[] rgba32Img;
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
-            
-            
-            //================================================================================
-            //DEBUG
-            //================================================================================
-            GLuint debugFBO = 0;
-            GL_CHECK_ERROR( glGenFramebuffers(1, &debugFBO) );
-            GL_CHECK_ERROR( glBindFramebuffer(GL_FRAMEBUFFER, debugFBO) );
-            
-            
-            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_FRAMEBUFFER, 
-                                                        GL_COLOR_ATTACHMENT0, 
-                                                        CachedImages,
-                                                        0,
-                                                        imgInfo.LocationInPixel.z) );
-                                                        
-            if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
-            
-            uint8_t fboPixels[5 * 4];
-            GL_CHECK_ERROR( glReadPixels(0, 0, 5, 1, GL_RGBA,  GL_UNSIGNED_BYTE, fboPixels) );
-            
-            
-            
-            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_FRAMEBUFFER, 
-                                                        GL_COLOR_ATTACHMENT0, 
-                                                        0,
-                                                        0,
-                                                        0) );
-            
-            for(int i = 0; i < 5; i++)
-            {
-                ssLOG_LINE("fboPixels[" << i << "]: "<<(int)fboPixels[i * 4 + 0] <<", "<<(int)fboPixels[i * 4 + 1] <<", "<<(int)fboPixels[i * 4 + 2]<<", "<<(int)fboPixels[i * 4 + 3]);
-            }
-            
-            GL_CHECK_ERROR( glBindFramebuffer(GL_FRAMEBUFFER, 0) );
-            
-            GL_CHECK_ERROR( glDeleteFramebuffers(1, &debugFBO) );
-            
-            //================================================================================
-            //DEBUG Ends
-            //================================================================================
-
-            
-            MappedImgIds[backendImage] = imgId;
-            backendImage->Internal_AddBackendDrawingRecord(CurrentDrawingBackend);
-            
-            if(backendImage->GetSize().x == 1 || backendImage->GetSize().y == 1)
-                return;
-
-            glm::ivec2 lastMipmapSize = backendImage->GetSize();
-            glm::ivec2 lastMipmampPixelPosOffset = glm::ivec2(0, 0);
-            glm::ivec2 currentMipmampPixelPosOffset = glm::ivec2(lastMipmapSize.x, 0);
-            
-            const int MAX_LOOP = 100;
-            const int READ_FB = 0;
-            const int DRAW_FB = 1;
-            
-            //GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D) );
-            
-            GLuint readDrawFramebuffers[2] = {0, 0};
-            
-            GL_CHECK_ERROR( glGenFramebuffers(2, readDrawFramebuffers) );
-            GL_CHECK_ERROR( glBindFramebuffer(GL_READ_FRAMEBUFFER, readDrawFramebuffers[READ_FB]) );
-            GL_CHECK_ERROR( glBindFramebuffer(GL_DRAW_FRAMEBUFFER, readDrawFramebuffers[DRAW_FB]) );
-
-            GLuint mipmapRenderbuffer = 0;
-            GL_CHECK_ERROR( glGenRenderbuffers(1, &mipmapRenderbuffer) );
-            GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, mipmapRenderbuffer) );
-
-            //Finally, generates mipmap for it
-            for(int i = 0; i < MAX_LOOP; i++)
-            {
-                //Last mipmap, no need to continue
-                if(lastMipmapSize.x / 2 <= 0 || lastMipmapSize.y / 2 <= 0)
-                    break;
-            
-                //Generate mipmap to a render buffer    
-                GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_READ_FRAMEBUFFER, 
-                                                            GL_COLOR_ATTACHMENT0, 
-                                                            CachedImages,
-                                                            0,
-                                                            imgInfo.LocationInPixel.z) );
-
-                if(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
-
-                GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, mipmapRenderbuffer) );
-                GL_CHECK_ERROR( glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, lastMipmapSize.x / 2, lastMipmapSize.y / 2) );
-                GL_CHECK_ERROR( glBindRenderbuffer(GL_RENDERBUFFER, 0) );
-
-                GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_DRAW_FRAMEBUFFER, 
-                                                            GL_COLOR_ATTACHMENT0, 
-                                                            GL_RENDERBUFFER, 
-                                                            mipmapRenderbuffer) );
-                
-                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
-
-                GL_CHECK_ERROR( glBlitFramebuffer(  lastMipmampPixelPosOffset.x, 
-                                                    lastMipmampPixelPosOffset.y, 
-                                                    lastMipmampPixelPosOffset.x + lastMipmapSize.x, 
-                                                    lastMipmampPixelPosOffset.y + lastMipmapSize.y, 
-                                                    0, 
-                                                    0, 
-                                                    lastMipmapSize.x / 2, 
-                                                    lastMipmapSize.y / 2,
-                                                    GL_COLOR_BUFFER_BIT, 
-                                                    GL_LINEAR) );
-
-                //Then copy the mipmap render buffer to the atlas
-                GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_READ_FRAMEBUFFER, 
-                                                            GL_COLOR_ATTACHMENT0, 
-                                                            GL_RENDERBUFFER, 
-                                                            mipmapRenderbuffer) );
-
-                if(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
-
-                GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_DRAW_FRAMEBUFFER, 
-                                                            GL_COLOR_ATTACHMENT0, 
-                                                            CachedImages,
-                                                            0,
-                                                            imgInfo.LocationInPixel.z) );
-
-                if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to attach to framebuffer");
-
-                GL_CHECK_ERROR( glBlitFramebuffer(  0, 
-                                                    0, 
-                                                    lastMipmapSize.x / 2, 
-                                                    lastMipmapSize.y / 2,
-                                                    currentMipmampPixelPosOffset.x,
-                                                    currentMipmampPixelPosOffset.y, 
-                                                    currentMipmampPixelPosOffset.x + lastMipmapSize.x / 2, 
-                                                    currentMipmampPixelPosOffset.y + lastMipmapSize.y / 2, 
-                                                    GL_COLOR_BUFFER_BIT, 
-                                                    GL_NEAREST) );
-                
-                lastMipmapSize /= 2;
-                lastMipmampPixelPosOffset = currentMipmampPixelPosOffset;
-                currentMipmampPixelPosOffset += glm::ivec2(0, lastMipmapSize.y);
-                
-                if(i == MAX_LOOP - 1)
-                {
-                    ssGUI_ERROR(ssGUI_BACKEND_TAG, "MAX_LOOP reached, internal error!!");
-                    GL_CHECK_ERROR( glDeleteFramebuffers(2, readDrawFramebuffers) );
-                    return;
-                }
-            }
-            
-            //GLuint textureId = 0;
-
-            //GL_CHECK_ERROR( glGenTextures(1, &textureId); );
-            //GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, textureId); );
-            //GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); );
-            //GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); );
-            //GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); );
-            //GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); );
-            
-            ////Save it to gpu
-            //GL_CHECK_ERROR( glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, backendImage->GetSize().x, backendImage->GetSize().y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
-            //                rgba32Img); );
-
-            //ImageTextures[backendImage] = textureId;
-
-            //Cleaning up framebuffers and render buffer
-            GL_CHECK_ERROR( glFramebufferRenderbuffer(  GL_READ_FRAMEBUFFER, 
-                                                        GL_COLOR_ATTACHMENT0, 
-                                                        GL_RENDERBUFFER, 
-                                                        0) );
-
-            GL_CHECK_ERROR( glFramebufferTextureLayer(  GL_DRAW_FRAMEBUFFER, 
-                                                        GL_COLOR_ATTACHMENT0, 
-                                                        0,
-                                                        0,
-                                                        0) );
-            
-            GL_CHECK_ERROR( glDeleteRenderbuffers(1, &mipmapRenderbuffer) );
-            GL_CHECK_ERROR( glDeleteFramebuffers(2, readDrawFramebuffers) );
-
-            ssLOG_LINE();
-
-            //MappedImgIds[backendImage] = imgId;
-            //backendImage->Internal_AddBackendDrawingRecord(CurrentDrawingBackend);
-        }
-        
-        //GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
+        MappedFontIds.erase(charTexture);
     }
     
     void OpenGL3_3_Common::RemoveImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
     {
-        //TODO
-    
-        #if 0
-        if(ImageTextures.find(backendImage) == ImageTextures.end())
+        if(MappedImgIds.find(backendImage) == MappedImgIds.end())
             return;
 
-        ImageTextures.erase(backendImage);
-        backendImage->Internal_RemoveBackendDrawingRecord(this);
-        #endif
+        MappedImgIds.erase(backendImage);
+        backendImage->Internal_RemoveBackendDrawingRecord(CurrentDrawingBackend);
     }
+    
+    void OpenGL3_3_Common::DrawToBackBuffer()
+    {
+        if(Vertices.empty())
+            return;
+    
+        SaveLastViewport();
+        
+        SaveState();
+        
+        GL_CHECK_ERROR( glUseProgram(ProgramId) );
+        
+        glm::mat4x4 orthMat = UpdateViewPortAndModelView(CurrentMainWindow->GetWindowSize());
+        
+        GL_CHECK_ERROR( glBindVertexArray(VAO) );
+        
+        GL_CHECK_ERROR( glUniformMatrix4fv(glGetUniformLocation(ProgramId, "projMatrix"), 1, GL_FALSE, &orthMat[0][0]) );
+        GL_CHECK_ERROR( glUniform1i(glGetUniformLocation(ProgramId, "ourTexture"), 0) );
+        
+        //NOTE: I could use  glGenSamplers and glSamplerParameteri but 1 sampler is good enough for now
+        GL_CHECK_ERROR( glActiveTexture(GL_TEXTURE0) );
+        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, CachedImages) );
+        
+        GL_CHECK_ERROR( glEnable(GL_PRIMITIVE_RESTART) );
+        GL_CHECK_ERROR( glPrimitiveRestartIndex(PRIMITIVE_RESTART) );
+        
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, VertsVBO) );
+        GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(glm::vec2), Vertices.data(), GL_DYNAMIC_DRAW) );
+        
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, ColorsVBO) );
+        GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, Colors.size() * sizeof(glm::u8vec4), Colors.data(), GL_DYNAMIC_DRAW) );
+
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, TexCoordsVBO) );
+        GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, TexCoords.size() * sizeof(glm::vec3), TexCoords.data(), GL_DYNAMIC_DRAW) );
+
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, TopLeftTexCoordsVBO) );
+        GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, TextureTopLeftCoords.size() * sizeof(glm::vec3), TextureTopLeftCoords.data(), GL_DYNAMIC_DRAW) );
+
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, BotRightTexCoordsVBO) );
+        GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, TextureBotRightCoords.size() * sizeof(glm::vec3), TextureBotRightCoords.data(), GL_DYNAMIC_DRAW) );
+
+        ssLOG_LINE("Vertices: "<<Vertices);
+        ssLOG_LINE("Colors: "<<Colors);
+        ssLOG_LINE("Idx: "<<Idx);
+
+        GL_CHECK_ERROR( glEnable(GL_BLEND); );
+        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
+
+        //GL_CHECK_ERROR( glDrawElements( GL_TRIANGLES, Idx.size(), GL_UNSIGNED_INT, Idx.data()) );
+        GL_CHECK_ERROR( glDrawElements( GL_TRIANGLE_FAN, Idx.size(), GL_UNSIGNED_INT, Idx.data()) );
+
+        //GL_CHECK_ERROR( glFlush() );
+
+        GL_CHECK_ERROR( glBindVertexArray(0) );
+        GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, 0) );
+        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D_ARRAY, 0) );
+        GL_CHECK_ERROR( glUseProgram(0) );
+        
+        //Vertices.clear();
+        //Colors.clear();
+        //TexCoords.clear();
+        //TextureTopLeftCoords.clear();
+        //TextureBotRightCoords.clear();
+        //Idx.clear();
+        
+        RestoreState();
+        
+        LoadLastViewport();
+    }
+    
+    //void OpenGL3_3_Common::ClearBackBuffer(glm::u8vec3 clearColor)
+    //{
+    //    GL_CHECK_ERROR( glClear(GL_COLOR_BUFFER_BIT); );
+        
+    //    GL_CHECK_ERROR( glClearColor(   static_cast<float>(clearColor.r) / 255.f, 
+    //                                    static_cast<float>(clearColor.g) / 255.f, 
+    //                                    static_cast<float>(clearColor.b) / 255.f, 
+    //                                    255.f); );
+    //}
     
     void* OpenGL3_3_Common::GetRawImageCacheHandle(ssGUI::Backend::BackendImageInterface* backendImage)
     {
