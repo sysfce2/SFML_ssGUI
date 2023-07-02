@@ -92,16 +92,16 @@ namespace Backend
                             const std::vector<glm::u8vec4>& colors,
                             const uint32_t character,
                             const ssGUI::Backend::BackendFontInterface& font,
-                            int characterSize) override;
+                            int characterSize);
 
             bool DrawShape( const std::vector<glm::vec2>& vertices, 
                             const std::vector<glm::vec2>& texCoords,
                             const std::vector<glm::u8vec4>& colors,
-                            const ssGUI::Backend::BackendImageInterface& image) override;
+                            const ssGUI::Backend::BackendImageInterface& image);
 
 
             bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::u8vec4>& colors) override;
+                            const std::vector<glm::u8vec4>& colors);
     };
 }
 

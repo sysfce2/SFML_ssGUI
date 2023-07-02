@@ -51,38 +51,13 @@ namespace Backend
 
         return ssGUI::Backend::BackendManager::GetMainWindowInterface(BackendIndex);
     }
-
-    //TODO: Move to common method
-    void BackendDrawingX11_OpenGL3_3::UpdateViewPortAndModelViewIfNeeded()
-    {
-        ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
-
-        if(mainWindow == nullptr)
-        {
-            ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to get MainWinodw");
-            return;
-        }
-
-        if(mainWindow->GetRenderSize() == LastMainWindowSize)
-            return;
-
-        LastMainWindowSize = mainWindow->GetRenderSize();
-        
-        mainWindow->SetGLContext();
-        glm::ivec2 renderSize = mainWindow->GetRenderSize();
-        GL_CHECK_ERROR( glViewport(0, 0, renderSize.x, renderSize.y); );
-        GL_CHECK_ERROR( glMatrixMode(GL_MODELVIEW););
-        GL_CHECK_ERROR( glLoadIdentity(); );
-        glm::mat4x4 orthoMat = glm::ortho<float>(0.f, renderSize.x, renderSize.y, 0.f, 0, 10);
-        GL_CHECK_ERROR( glMultMatrixf(glm::value_ptr(orthoMat)); );
-    }
     
     void BackendDrawingX11_OpenGL3_3::InitializeOpenGLCommonIfNeeded()
     {
         if(OpenGLCommon == nullptr)
         {
             ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
-            OpenGLCommon = new ssGUI::Backend::OpenGL3_3_Common(mainWindow, this);
+            OpenGLCommon = new ssGUI::Backend::OpenGL3_3_Common(mainWindow);
         }
     }
 
@@ -109,54 +84,14 @@ namespace Backend
     
     void BackendDrawingX11_OpenGL3_3::SaveState()
     {
-        ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
-        
-        if(mainWindow == nullptr)
-        {
-            ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to get MainWinodw");
-            return;
-        }
-
-        if(!mainWindow->SetGLContext())
-        {
-            ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to set GL state");
-            return;
-        }
-
-        GL_CHECK_ERROR( glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS); );
-        GL_CHECK_ERROR( glPushAttrib(GL_ALL_ATTRIB_BITS); );
-        GL_CHECK_ERROR( glMatrixMode(GL_MODELVIEW); );
-        GL_CHECK_ERROR( glPushMatrix(); );
-        GL_CHECK_ERROR( glMatrixMode(GL_PROJECTION); );
-        GL_CHECK_ERROR( glPushMatrix(); );
-        GL_CHECK_ERROR( glMatrixMode(GL_TEXTURE); );
-        GL_CHECK_ERROR( glPushMatrix(); );
+        InitializeOpenGLCommonIfNeeded();
+        OpenGLCommon->SaveState();
     }
 
     void BackendDrawingX11_OpenGL3_3::RestoreState()
     {
-        ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
-        
-        if(mainWindow == nullptr)
-        {
-            ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to get MainWinodw");
-            return;
-        }
-
-        if(!mainWindow->SetGLContext())
-        {
-            ssGUI_WARNING(ssGUI_BACKEND_TAG, "Failed to set GL state");
-            return;
-        }
-
-        GL_CHECK_ERROR( glMatrixMode(GL_MODELVIEW); );
-        GL_CHECK_ERROR( glPopMatrix(); );
-        GL_CHECK_ERROR( glMatrixMode(GL_PROJECTION); );
-        GL_CHECK_ERROR( glPopMatrix(); );
-        GL_CHECK_ERROR( glMatrixMode(GL_TEXTURE); );
-        GL_CHECK_ERROR( glPopMatrix(); );
-        GL_CHECK_ERROR( glPopClientAttrib(); );
-        GL_CHECK_ERROR( glPopAttrib(); );
+        InitializeOpenGLCommonIfNeeded();
+        OpenGLCommon->RestoreState();
     }
 
     bool BackendDrawingX11_OpenGL3_3::DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities)
@@ -164,48 +99,11 @@ namespace Backend
         InitializeOpenGLCommonIfNeeded();
 
         return OpenGLCommon->DrawEntities(entities);
-
+    }
     
-        //Check if the main window is already closed
-        if(GetMainWindow()->IsClosed())
-            return false;
-
-        UpdateViewPortAndModelViewIfNeeded();
-
-        //Start drawing
-        for(int i = 0; i < entities.size(); i++)
-        {
-            bool result = true;
-            //Drawing text
-            if(entities[i].BackendFont != nullptr)
-            {
-                result = DrawShape( entities[i].Vertices, 
-                                    entities[i].TexCoords, 
-                                    entities[i].Colors, 
-                                    entities[i].Character, 
-                                    *entities[i].BackendFont, 
-                                    entities[i].CharacterSize);
-            }
-            //Drawing image
-            else if(entities[i].BackendImage != nullptr)
-            {
-                result = DrawShape( entities[i].Vertices, 
-                                    entities[i].TexCoords, 
-                                    entities[i].Colors,
-                                    *entities[i].BackendImage);
-            }
-            //Drawing shapes
-            else 
-            {
-                result = DrawShape( entities[i].Vertices, 
-                                    entities[i].Colors);
-            }
-
-            if(!result)
-                return false;
-        }
-
-        return true;
+    void BackendDrawingX11_OpenGL3_3::DrawToBackBuffer()
+    {
+        OpenGLCommon->DrawToBackBuffer();
     }
 
     void BackendDrawingX11_OpenGL3_3::Render(glm::u8vec3 clearColor)
@@ -213,7 +111,7 @@ namespace Backend
         ssGUI::Backend::BackendMainWindowInterface* mainWindow = GetMainWindow();
         InitializeOpenGLCommonIfNeeded();
         ClearBackBuffer(clearColor);
-        OpenGLCommon->DrawToBackBuffer();
+        DrawToBackBuffer();
         
         ssLOG_LINE("Rendered");
         
@@ -227,72 +125,34 @@ namespace Backend
                             ssGUI::Backend::BackendManager::GetMainWindowInterface(0)->GetRawHandle());
                 
         glXSwapBuffers(rawHandle->WindowDisplay, rawHandle->WindowId);
-        //OpenGLCommon->ClearBackBuffer(clearColor);
-        //ClearBackBuffer(clearColor);
     }
 
     void BackendDrawingX11_OpenGL3_3::ClearBackBuffer(glm::u8vec3 clearColor)
     {
-        
-        
-        GL_CHECK_ERROR( glClear(GL_COLOR_BUFFER_BIT); );
-        
         GL_CHECK_ERROR( glClearColor(   static_cast<float>(clearColor.r) / 255.f, 
                                         static_cast<float>(clearColor.g) / 255.f, 
                                         static_cast<float>(clearColor.b) / 255.f, 
                                         255.f); );
+
+        GL_CHECK_ERROR( glClear(GL_COLOR_BUFFER_BIT); );
     }
     
     void BackendDrawingX11_OpenGL3_3::AddImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
     {
-        if(!backendImage->IsValid())
-            return;
-    
-        if(ImageTextures.find(backendImage) != ImageTextures.end())
-            return;
-            
+        InitializeOpenGLCommonIfNeeded();
+        if(!OpenGLCommon->AddImageCache(backendImage))
         {
-            //Get image
-            ssGUI::ImageFormat format;
-            const void* rawPtr = backendImage->GetPixelPtr(format);
-
-            //Convert it to rgba32
-            uint8_t* rgba32Img = new uint8_t[backendImage->GetSize().x * backendImage->GetSize().y * 4];
-            if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img), rawPtr, format, backendImage->GetSize()))
-            {
-                delete[] rgba32Img;
-                return;
-            }
-
-            GLuint textureId = 0;
-
-            GL_CHECK_ERROR( glGenTextures(1, &textureId); );
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, textureId); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); );
-            
-            //Save it to gpu
-            GL_CHECK_ERROR( glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, backendImage->GetSize().x, backendImage->GetSize().y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
-                            rgba32Img); );
-
-            ImageTextures[backendImage] = textureId;
-
-            delete[] rgba32Img;
-            
-            backendImage->Internal_AddBackendDrawingRecord(this);
+            ssGUI_ERROR(ssGUI_BACKEND_TAG, "Failed to add image cache");
+            return;
         }
         
-        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
+        backendImage->Internal_AddBackendDrawingRecord(this);
     }
     
     void BackendDrawingX11_OpenGL3_3::RemoveImageCache(ssGUI::Backend::BackendImageInterface* backendImage)
     {
-        if(ImageTextures.find(backendImage) == ImageTextures.end())
-            return;
-
-        ImageTextures.erase(backendImage);
+        InitializeOpenGLCommonIfNeeded();
+        OpenGLCommon->RemoveImageCache(backendImage);
         backendImage->Internal_RemoveBackendDrawingRecord(this);
     }
     
@@ -302,163 +162,6 @@ namespace Backend
             return nullptr;
         
         return &ImageTextures[backendImage];
-    }
-    
-    bool BackendDrawingX11_OpenGL3_3::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::vec2>& texCoords,
-                                                const std::vector<glm::u8vec4>& colors,
-                                                const uint32_t character,
-                                                const ssGUI::Backend::BackendFontInterface& font,
-                                                int characterSize)
-    {
-        if(!font.IsValid())
-            return false;
-    
-        auto& rawFont = const_cast<ssGUI::Backend::BackendFontInterface&>(font);
-
-        ssGUI::ImageData charImgData;
-        if(!rawFont.GetCharacterImage(character, characterSize, charImgData))
-            return false;
-
-        GetMainWindow()->SetGLContext();
-    
-        glm::ivec2 imgSize = charImgData.GetSize();
-        CharTextureIdentifier curIdentifier = CharTextureIdentifier(&rawFont, characterSize, character);
-
-        if(CharTextures.find(curIdentifier) == CharTextures.end())
-        {
-            GLuint textureId = 0;
-
-            GL_CHECK_ERROR( glGenTextures(1, &textureId); );
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, textureId); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); );
-            GL_CHECK_ERROR( glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); );
-
-            //Convert it to rgba32
-            uint8_t* rgba32Img = new uint8_t[charImgData.GetSize().x * charImgData.GetSize().y * 4];
-            ssGUI::ImageFormat format;
-            void* rawPixel = charImgData.GetPixelPtr(format);
-            
-            if(!ssGUI::ImageUtil::ConvertToRGBA32(static_cast<void*>(rgba32Img), rawPixel, format, imgSize))
-            {
-                delete[] rgba32Img;
-                GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-                return false;
-            }
-            
-            GL_CHECK_ERROR( glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imgSize.x, imgSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
-                            rgba32Img); );
-
-            CharTextures[curIdentifier] = textureId;
-
-            delete[] rgba32Img;
-        }
-        else
-        {
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, CharTextures[curIdentifier]); );
-        }
-         
-        GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D); );
-        GL_CHECK_ERROR( glEnable(GL_BLEND); );
-        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-        glBegin(GL_TRIANGLE_FAN);
-
-        for(int i = 0; i < vertices.size(); i++)
-        {
-            glm::vec2 texCoord = texCoords[i];
-
-            texCoord.x /= imgSize.x;
-            texCoord.y /= imgSize.y;
-            
-            glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-            glTexCoord2f(texCoord.x, texCoord.y);
-            //The reason for rounding the position is because it seems like the UV is shifting in floating points, at least for now
-            glVertex3f(round(vertices[i].x), round(vertices[i].y), 0);
-        }
-
-        GL_CHECK_ERROR( glEnd(); );
-        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-        GL_CHECK_ERROR( glFlush(); );
-
-        return true;        
-    }
-
-    bool BackendDrawingX11_OpenGL3_3::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::vec2>& texCoords,
-                                                const std::vector<glm::u8vec4>& colors,
-                                                const ssGUI::Backend::BackendImageInterface& image)
-    {
-        GetMainWindow()->SetGLContext();
-
-        if(!image.IsValid())
-            return false;
-
-        //GL_CHECK_ERROR( glUseProgram(ProgramId); );
-        
-        AddImageCache(const_cast<ssGUI::Backend::BackendImageInterface*>(&image));
-        
-        glm::ivec2 imgSize = image.GetSize();
-        
-        //TODO: Remove const cast
-        //If unable to add to cache, return
-        if(ImageTextures.find(const_cast<ssGUI::Backend::BackendImageInterface*>(&image)) == ImageTextures.end())
-            return false;
-        else
-            GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, ImageTextures[const_cast<ssGUI::Backend::BackendImageInterface*>(&image)]); );
-
-        //render it
-        GL_CHECK_ERROR( glEnable(GL_TEXTURE_2D); );
-        GL_CHECK_ERROR( glEnable(GL_BLEND); );
-        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-        glBegin(GL_TRIANGLE_FAN);
-
-        for(int i = 0; i < vertices.size(); i++)
-        {
-            glm::vec2 texCoord = texCoords[i];
-
-            texCoord.x /= imgSize.x;
-            texCoord.y /= imgSize.y;
-            glTexCoord2f(texCoord.x, texCoord.y);
-
-            glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-
-            //The reason for rounding the position is because it seems like the UV is shifting in floating points, at least for now
-            glVertex3f(round(vertices[i].x), round(vertices[i].y), 0);
-        }
-
-
-        GL_CHECK_ERROR( glEnd(); );
-        GL_CHECK_ERROR( glBindTexture(GL_TEXTURE_2D, 0); );
-        GL_CHECK_ERROR( glFlush(); );
-
-        return true;    
-    }
-
-
-    bool BackendDrawingX11_OpenGL3_3::DrawShape(const std::vector<glm::vec2>& vertices, 
-                                                const std::vector<glm::u8vec4>& colors)
-    {
-        GetMainWindow()->SetGLContext();
-
-        GL_CHECK_ERROR( glEnable(GL_BLEND); );
-        GL_CHECK_ERROR( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); );
-
-        glBegin(GL_TRIANGLE_FAN);
-
-        for(int i = 0; i < vertices.size(); i++)
-        {
-            glColor4ub(colors[i].r, colors[i].g, colors[i].b, colors[i].a);   
-            glVertex3f(vertices[i].x, vertices[i].y, 0);
-        }
-
-        GL_CHECK_ERROR( glEnd(); );
-        GL_CHECK_ERROR( glFlush(); );
-
-        return true;
     }
 }
 

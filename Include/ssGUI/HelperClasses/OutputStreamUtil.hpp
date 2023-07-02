@@ -67,6 +67,12 @@ namespace glm
         stream << "(glm::vec2: " << vec.x << ", " << vec.y << ")";
         return stream;
     }
+    
+    inline std::ostream& operator<<(std::ostream& stream, const glm::vec3& vec)
+    {
+        stream << "(glm::vec3: " << vec.x << ", " << vec.y << ", " << vec.z << ")";
+        return stream;
+    }
 
     inline std::ostream& operator<<(std::ostream& stream, const glm::ivec2& vec)
     {
@@ -77,6 +83,12 @@ namespace glm
     inline std::ostream& operator<<(std::ostream& stream, const glm::ivec3& vec)
     {
         stream << "(glm::ivec2: " << vec.x << ", " << vec.y << ", " << vec.z << ")";
+        return stream;
+    }
+    
+    inline std::ostream& operator<<(std::ostream& stream, const glm::vec4& vec)
+    {
+        stream << "(glm::vec4: " << vec.x << ", " << vec.y << ", " << vec.z << ", " << vec.w << ")";
         return stream;
     }
     

@@ -41,6 +41,9 @@ namespace Backend
             //Draws the entity based on what is set in the _properties_. Returns true if drawn successfully. 
             //*Note that if you are not using <ssGUIManager>, you need to call <Render> at the end in order to render it*.
             virtual bool DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities) = 0;
+            
+            //function: DrawToBackBuffer
+            virtual void DrawToBackBuffer() = 0;
 
             //function: Render
             //Renders every entity that are drawn to the <MainWindow>. This will automatically clear the back buffer. 
@@ -66,24 +69,6 @@ namespace Backend
             //You can use the returned handle to modify the cached image.
             //If no cache is found, it will return nullptr.
             virtual void* GetRawImageCacheHandle(ssGUI::Backend::BackendImageInterface* backendImage) = 0;
-            
-        protected:
-            //TODO: Use float for character size
-            virtual bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                                    const std::vector<glm::vec2>& texCoords,
-                                    const std::vector<glm::u8vec4>& colors,
-                                    const uint32_t character,
-                                    const ssGUI::Backend::BackendFontInterface& font,
-                                    int CharacterSize) = 0;
-
-            virtual bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                                    const std::vector<glm::vec2>& texCoords,
-                                    const std::vector<glm::u8vec4>& colors,
-                                    const ssGUI::Backend::BackendImageInterface& image) = 0;
-
-
-            virtual bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                                    const std::vector<glm::u8vec4>& colors) = 0;
     };
     inline BackendDrawingInterface::~BackendDrawingInterface(){}   //Pure virtual destructor needs to be defined
 } 

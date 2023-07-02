@@ -54,7 +54,6 @@ namespace Backend
             BackendDrawingX11_OpenGL3_3(BackendDrawingX11_OpenGL3_3 const& other);
         
             ssGUI::Backend::BackendMainWindowInterface* GetMainWindow();
-            void UpdateViewPortAndModelViewIfNeeded();
             void InitializeOpenGLCommonIfNeeded();
         
         public:
@@ -72,6 +71,10 @@ namespace Backend
             //function: DrawEntities
             //See <BackendDrawingInterface::DrawEntities>
             bool DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities) override;
+            
+            //function: DrawToBackBuffer
+            //See <BackendDrawingInterface::DrawToBackBuffer>
+            void DrawToBackBuffer() override;
 
             //function: Render
             //See <BackendDrawingInterface::Render>
@@ -92,23 +95,6 @@ namespace Backend
             //function: GetRawImageCacheHandle
             //See <BackendDrawingInterface::GetRawImageCacheHandle>
             void* GetRawImageCacheHandle(ssGUI::Backend::BackendImageInterface* backendImage) override;
-            
-        protected:
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::vec2>& texCoords,
-                            const std::vector<glm::u8vec4>& colors,
-                            const uint32_t character,
-                            const ssGUI::Backend::BackendFontInterface& font,
-                            int characterSize) override;
-
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::vec2>& texCoords,
-                            const std::vector<glm::u8vec4>& colors,
-                            const ssGUI::Backend::BackendImageInterface& image) override;
-
-
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::u8vec4>& colors) override;
     };
 }
 

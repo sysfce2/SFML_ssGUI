@@ -564,6 +564,8 @@ if(ssGUI_BUILD_TESTS)
                     "ssGUI_Test_NotoColorEmoji"
                     "${CMAKE_CURRENT_LIST_DIR}/Resources/sd.png"
                     "ssGUI_Test_sd"
+                    "${CMAKE_CURRENT_LIST_DIR}/Resources/sdTestEdge.png"
+                    "ssGUI_Test_sd_edge"
                     "${CMAKE_CURRENT_LIST_DIR}/Resources/NotoSans-Bold.ttf"
                     "ssGUI_Test_NotoSans_Bold")
 

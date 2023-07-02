@@ -16,6 +16,10 @@
 #include <unordered_map>
 #include <vector>
 
+#define SSGUI_DEBUG_OPENGL_MIPMAP
+#define SSGUI_DEBUG_DUMP_MIPMAP
+
+
 //From: https://stackoverflow.com/questions/20834838/using-tuple-in-unordered-map
 // function has to live in the std namespace 
 // so that it is picked up by argument-dependent name lookup (ADL).
@@ -102,20 +106,16 @@ namespace Backend
             GLuint TexCoordsVBO;
             GLuint TopLeftTexCoordsVBO;
             GLuint BotRightTexCoordsVBO;
-            //GLuint UseUVsVBO;
-
             GLint LastViewportProperties[4];
-
             
             std::vector<glm::vec2> Vertices;
-            std::vector<glm::u8vec4> Colors;
+            std::vector<glm::vec4> Colors;
             std::vector<glm::vec3> TexCoords;
             std::vector<glm::vec3> TextureTopLeftCoords;
             std::vector<glm::vec3> TextureBotRightCoords;
             std::vector<GLuint> Idx;
 
             BackendMainWindowInterface* CurrentMainWindow;
-            BackendDrawingInterface* CurrentDrawingBackend;
             
             glm::ivec2 LastMainWindowSize;
             
@@ -160,7 +160,7 @@ namespace Backend
             bool RemoveDrawingCache(std::unordered_map<T, int>& cachedIds, T key);
     
         public:        
-            OpenGL3_3_Common(BackendMainWindowInterface* mainWindow, BackendDrawingInterface* drawingBackend);
+            OpenGL3_3_Common(BackendMainWindowInterface* mainWindow);
             
             ~OpenGL3_3_Common();
         
