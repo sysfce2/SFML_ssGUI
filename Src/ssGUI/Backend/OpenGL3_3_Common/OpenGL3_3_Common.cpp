@@ -40,8 +40,8 @@ namespace Backend
 
         out vec4 fragColor;
         out vec3 fragTexCoord;
-        out vec3 fragTexTopLeft;
-        out vec3 fragTexBotRight;
+        flat out vec3 fragTexTopLeft;
+        flat out vec3 fragTexBotRight;
 
         uniform mat4 projMatrix;
 
@@ -66,8 +66,8 @@ namespace Backend
         
         in vec4 fragColor;
         in vec3 fragTexCoord;
-        in vec3 fragTexTopLeft;
-        in vec3 fragTexBotRight;
+        flat in vec3 fragTexTopLeft;
+        flat in vec3 fragTexBotRight;
 
         uniform sampler2DArray ourTexture;
 
@@ -85,11 +85,7 @@ namespace Backend
 
         vec2 BoundTexCoord(vec2 texCoord, ivec2 texPos, ivec2 texSize)
         {
-            texCoord.x = min(texCoord.x, texPos.x + texSize.x - 1);
-            texCoord.y = min(texCoord.y, texPos.y + texSize.y - 1);
-            texCoord.x = max(texCoord.x, texPos.x);
-            texCoord.y = max(texCoord.y, texPos.y);
-            return texCoord;
+            return clamp(texCoord, texPos, texPos + texSize - 1);
         }
 
         void main()
@@ -104,23 +100,21 @@ namespace Backend
                 return;
             }
             
-            //vec3 boundedTexCoord = fragTexCoord - vec3(0.5, 0.5, 0);
             vec3 boundedTexCoord = fragTexCoord;
-            boundedTexCoord.xy = BoundTexCoord(fragTexCoord.xy, ivec2(fragTexTopLeft.xy), ivec2((fragTexBotRight - fragTexTopLeft).xy));
-            
+            vec2 imageSize = (fragTexBotRight - fragTexTopLeft).xy;
+            boundedTexCoord.xy = BoundTexCoord(fragTexCoord.xy, ivec2(fragTexTopLeft.xy), ivec2(imageSize));
             float mipmapLevel = 0;
             
-            //#ifdef GL_ARB_texture_query_lod
-            //    mipmapLevel = textureQueryLOD(ourTexture, fragTexCoord.xy / textureSize(ourTexture, 0).xy).y;
-            //#else
+            #ifdef GL_ARB_texture_query_lod
+                mipmapLevel = textureQueryLOD(ourTexture, fragTexCoord.xy / textureSize(ourTexture, 0).xy).y;
+            #else
                 mipmapLevel = mip_map_level(boundedTexCoord.xy);
-            //#endif
+            #endif
             
-            int roundedMipmapLevel = int(mipmapLevel + 0.5f);
+            int roundedMipmapLevel = int(mipmapLevel);
+            //roundedMipmapLevel = 3;
             
-            //roundedMipmapLevel = 1;
-            
-            //If mipmap level is 0, don't need to do anything
+            //If mipmap level is 0 (base), don't need to do anything
             if(roundedMipmapLevel == 0)
             {
                 outColor = texelFetch(ourTexture, ivec3(boundedTexCoord), 0) * (fragColorN);
@@ -129,39 +123,59 @@ namespace Backend
             
             //Otherwise get the localized TexCoord
             vec2 localTexCoord = (boundedTexCoord.xy - fragTexTopLeft.xy);
+            vec2 localTexCoordNormalized = localTexCoord / imageSize;
             
-            //And multiply by 0.5 ^ mipmap level
-            float mipmapMultiplier = pow(0.5f, float(roundedMipmapLevel));
+            //NOTE: This in theory is pretty good, but doesn't work because mipmap size is rounded down at each level 
+            //          and each one is relying on the previous one.
+            //Get the mipmap multiplier by doing 0.5 ^ mipmap level
+            //float mipmapMultiplier = pow(0.5f, float(roundedMipmapLevel));
             
+            //NOTE: Again, this works on paper but because mipmap is rounded down each time, the offset will be wrong.
             //The coordinate of the mipmap in y can be found by using the nth partial sum of a geometric sequence
             //  with this (modified) formula: (1 - 0.5 ^ mipmapLevel) / (1 - 0.5) - 1
-            float mipmapYOffsetMultiplier = (1 - mipmapMultiplier) / 0.5f - 1;
+            //float mipmapYOffsetMultiplier = (1.f - mipmapMultiplier) / 0.5f - 1.f;
             
-            //float imageHeight = (fragTexBotRightNormalized - fragTexTopLeftNormalized).y;
-            ivec2 mipmapSize = ivec2((fragTexBotRight - fragTexTopLeft).xy);
+            //Get the mipmap size and Y offset
+            ivec2 mipmapSize = ivec2(imageSize);
+            int mipmapYOffset = -mipmapSize.y; 
             
-            ivec3 mipmapTopLeft = ivec3(fragTexBotRight.x, fragTexTopLeft.y + floor(mipmapYOffsetMultiplier * float(mipmapSize.y)), fragTexCoord.z);
+            const int MAX_LOOP = 99;
+            for(int i = 0; i < MAX_LOOP; i++)
+            {
+                if(i == roundedMipmapLevel)
+                    break;
+                
+                mipmapYOffset += mipmapSize.y;
+                mipmapSize /= 2;
+            }
             
-            vec3 mipmapTexCoord = vec3( floor(localTexCoord.x * mipmapMultiplier), floor(localTexCoord.y * mipmapMultiplier),
-                                        fragTexCoord.z);
+            ivec3 mipmapTopLeft = ivec3(fragTexBotRight.x, fragTexTopLeft.y + mipmapYOffset, fragTexCoord.z);
+            vec3 mipmapTexCoord = vec3(localTexCoordNormalized * vec2(mipmapSize), fragTexCoord.z);
             
             mipmapTexCoord += vec3(mipmapTopLeft.xy, 0);
-
-            vec2 lowerTexCoord = BoundTexCoord(floor(mipmapTexCoord.xy), mipmapTopLeft.xy, ivec2(vec2(mipmapSize) * mipmapMultiplier));
-            //vec2 lowerTexCoord = mipmapTexCoord.xy;
-            vec2 higherTexCoord = BoundTexCoord(ceil(mipmapTexCoord.xy), mipmapTopLeft.xy, ivec2(vec2(mipmapSize) * mipmapMultiplier));
-            //vec2 higherTexCoord = lowerTexCoord;
+            mipmapTexCoord.xy = BoundTexCoord(mipmapTexCoord.xy, mipmapTopLeft.xy, mipmapSize);
             
-            float topLeftMultiplier = 1 - min(distance(lowerTexCoord, mipmapTexCoord.xy), 1);
-            float topRightMultiplier = 1 - min(distance(vec2(higherTexCoord.x, lowerTexCoord.y), mipmapTexCoord.xy), 1);
-            float botRightMultiplier = 1 - min(distance(higherTexCoord, mipmapTexCoord.xy), 1);
-            float botLeftMultiplier = 1 - min(distance(vec2(lowerTexCoord.x, higherTexCoord.y), mipmapTexCoord.xy), 1);
+            //Nearest
+            //outColor = texelFetch(ourTexture, ivec3(mipmapTexCoord.xy, fragTexCoord.z), 0) * (fragColorN);
+            //return;
             
-            float totalMultiplier = topLeftMultiplier + topRightMultiplier + botRightMultiplier + botLeftMultiplier;
-            topLeftMultiplier /= totalMultiplier;
-            topRightMultiplier /= totalMultiplier;
-            botRightMultiplier /= totalMultiplier;
-            botLeftMultiplier /= totalMultiplier;
+            vec2 lowerTexCoord = BoundTexCoord(floor(mipmapTexCoord.xy - vec2(0.5f, 0.5f)) + 0.5f, mipmapTopLeft.xy, mipmapSize);
+            vec2 higherTexCoord = BoundTexCoord(floor(mipmapTexCoord.xy + vec2(0.5f, 0.5f)) + 0.5f, mipmapTopLeft.xy, mipmapSize);
+            
+            mipmapTexCoord.xy = clamp(mipmapTexCoord.xy, lowerTexCoord, higherTexCoord);
+            
+            float totalMultiplier = (higherTexCoord.x - lowerTexCoord.x) * (higherTexCoord.y - lowerTexCoord.y);
+            
+            float leftness = (higherTexCoord.x - mipmapTexCoord.x);
+            float rightness = (mipmapTexCoord.x - lowerTexCoord.x);
+            float topness = (higherTexCoord.y - mipmapTexCoord.y);
+            float botness = (mipmapTexCoord.y - lowerTexCoord.y);
+            
+            
+            float topLeftMultiplier = leftness * topness / totalMultiplier;
+            float topRightMultiplier = rightness * topness / totalMultiplier;
+            float botRightMultiplier = rightness * botness / totalMultiplier;
+            float botLeftMultiplier = leftness * botness / totalMultiplier;
             
             vec4 linearColor =  texelFetch(ourTexture, ivec3(lowerTexCoord, fragTexCoord.z), 0) * topLeftMultiplier + 
                                 texelFetch(ourTexture, ivec3(vec2(higherTexCoord.x, lowerTexCoord.y), fragTexCoord.z), 0) * topRightMultiplier +
@@ -169,12 +183,6 @@ namespace Backend
                                 texelFetch(ourTexture, ivec3(vec2(lowerTexCoord.x, higherTexCoord.y), fragTexCoord.z), 0) * botLeftMultiplier;
             
             outColor = linearColor * (fragColorN);
-            //outColor = texelFetch(ourTexture, ivec3(lowerTexCoord, fragTexCoord.z), 0);
-            
-            
-            //outColor = texture(ourTexture, mipmapTexCoord) * (fragColorN);
-            //outColor = vec4(localTexCoord, 0, 1);
-            //outColor = vec4(1, 0, 0, 1);
         }  
     )";
 
