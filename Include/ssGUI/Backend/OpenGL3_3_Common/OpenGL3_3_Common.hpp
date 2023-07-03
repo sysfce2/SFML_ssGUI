@@ -16,8 +16,8 @@
 #include <unordered_map>
 #include <vector>
 
-#define SSGUI_DEBUG_OPENGL_MIPMAP
-#define SSGUI_DEBUG_DUMP_MIPMAP
+//#define SSGUI_DEBUG_OPENGL_MIPMAP
+//#define SSGUI_DEBUG_DUMP_MIPMAP
 
 
 //From: https://stackoverflow.com/questions/20834838/using-tuple-in-unordered-map

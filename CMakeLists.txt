@@ -526,7 +526,7 @@ function(AddFilesToExecutables folderToExe binSubFolder ideFolderName targetsToL
 
         # For now, skip custom graphics example if we are using SFML backend
         STRING(TOLOWER ${ssGUI_MAIN_BACKEND} ssGUI_LOWER_MAIN_BACKEND)
-        if(CUR_NAME STREQUAL "CustomGraphicsExampleV2" AND NOT ssGUI_LOWER_MAIN_BACKEND MATCHES ".*opengl.*")
+        if((CUR_NAME STREQUAL "CustomGraphicsExampleV2" OR CUR_NAME STREQUAL "DynamicAtlasTest_Auto") AND NOT ssGUI_LOWER_MAIN_BACKEND MATCHES ".*opengl.*")
             continue()
         endif()
 

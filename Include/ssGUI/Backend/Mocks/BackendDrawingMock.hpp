@@ -65,6 +65,9 @@ namespace Backend
             //See <BackendDrawingInterface::DrawEntities>
             bool DrawEntities(  const std::vector<ssGUI::DrawingEntity>& entities) override;
 
+            //function: DrawToBackBuffer
+            void DrawToBackBuffer() override;
+            
             //function: Render
             //See <BackendDrawingInterface::Render>
             void Render(glm::u8vec3 clearColor) override;
@@ -84,24 +87,6 @@ namespace Backend
             //function: GetRawImageCacheHandle
             //See <BackendDrawingInterface::GetRawImageCacheHandle>
             void* GetRawImageCacheHandle(ssGUI::Backend::BackendImageInterface* backendImage) override;
-            
-        //NOTE: These functions are not used in mock
-        protected:
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::vec2>& texCoords,
-                            const std::vector<glm::u8vec4>& colors,
-                            const uint32_t character,
-                            const ssGUI::Backend::BackendFontInterface& font,
-                            int characterSize);
-
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::vec2>& texCoords,
-                            const std::vector<glm::u8vec4>& colors,
-                            const ssGUI::Backend::BackendImageInterface& image);
-
-
-            bool DrawShape( const std::vector<glm::vec2>& vertices, 
-                            const std::vector<glm::u8vec4>& colors);
     };
 }
 
