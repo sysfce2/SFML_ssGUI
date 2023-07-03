@@ -34,6 +34,8 @@ namespace Backend
             //See <BackendDrawingInterface::DrawEntities>
             bool DrawEntities(const std::vector<ssGUI::DrawingEntity>& entities) override;
 
+            void DrawToBackBuffer() override;
+
             //function: Render
             //See <BackendDrawingInterface::Render>
             void Render(glm::u8vec3 clearColor) override;

@@ -615,10 +615,10 @@ namespace Backend
         GL_CHECK_ERROR( glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize) );
         GL_CHECK_ERROR( glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayerSize) );
         
-        ssLOG_LINE("maxTextureSize: "<<maxTextureSize);
-        ssLOG_LINE("maxLayerSize: "<<maxLayerSize);
+        //ssLOG_LINE("maxTextureSize: "<<maxTextureSize);
+        //ssLOG_LINE("maxLayerSize: "<<maxLayerSize);
         
-        maxTextureSize = 1920;
+        //maxTextureSize = 1920;
         
         GLint success = GL_FALSE;
         char infoLog[512] { 0 };
@@ -782,15 +782,14 @@ namespace Backend
         glm::mat4x4 orthoMat = glm::ortho<float>(0.f, widthHeight.x, widthHeight.y, 0.f, 0, 10);
         GL_CHECK_ERROR( glMultMatrixf(glm::value_ptr(orthoMat)); );
         
-        ssLOG_LINE("Width: "<<widthHeight.x);
-        ssLOG_LINE("Height: "<<widthHeight.y);
-        {
-            ssLOG_LINE("orthoMat: "<<orthoMat[0][0]<<", "<<orthoMat[1][0]<<", "<<orthoMat[2][0]<<", "<<orthoMat[3][0]); 
-            ssLOG_LINE("orthoMat: "<<orthoMat[0][1]<<", "<<orthoMat[1][1]<<", "<<orthoMat[2][1]<<", "<<orthoMat[3][1]); 
-            ssLOG_LINE("orthoMat: "<<orthoMat[0][2]<<", "<<orthoMat[1][2]<<", "<<orthoMat[2][2]<<", "<<orthoMat[3][2]); 
-            ssLOG_LINE("orthoMat: "<<orthoMat[0][3]<<", "<<orthoMat[1][3]<<", "<<orthoMat[2][3]<<", "<<orthoMat[3][3]); 
-        
-        }
+        //ssLOG_LINE("Width: "<<widthHeight.x);
+        //ssLOG_LINE("Height: "<<widthHeight.y);
+        //{
+        //    ssLOG_LINE("orthoMat: "<<orthoMat[0][0]<<", "<<orthoMat[1][0]<<", "<<orthoMat[2][0]<<", "<<orthoMat[3][0]); 
+        //    ssLOG_LINE("orthoMat: "<<orthoMat[0][1]<<", "<<orthoMat[1][1]<<", "<<orthoMat[2][1]<<", "<<orthoMat[3][1]); 
+        //    ssLOG_LINE("orthoMat: "<<orthoMat[0][2]<<", "<<orthoMat[1][2]<<", "<<orthoMat[2][2]<<", "<<orthoMat[3][2]); 
+        //    ssLOG_LINE("orthoMat: "<<orthoMat[0][3]<<", "<<orthoMat[1][3]<<", "<<orthoMat[2][3]<<", "<<orthoMat[3][3]); 
+        //}
 
         return orthoMat;
     }
@@ -997,13 +996,13 @@ namespace Backend
         GL_CHECK_ERROR( glBindBuffer(GL_ARRAY_BUFFER, BotRightTexCoordsVBO) );
         GL_CHECK_ERROR( glBufferData(GL_ARRAY_BUFFER, TextureBotRightCoords.size() * sizeof(glm::vec3), TextureBotRightCoords.data(), GL_DYNAMIC_DRAW) );
 
-        ssLOG_LINE("Vertices: "<<Vertices);
-        ssLOG_LINE("TexCoords: "<<TexCoords);
-        ssLOG_LINE("Colors: "<<Colors);
-        ssLOG_LINE("Idx: "<<Idx);
+        //ssLOG_LINE("Vertices: "<<Vertices);
+        //ssLOG_LINE("TexCoords: "<<TexCoords);
+        //ssLOG_LINE("Colors: "<<Colors);
+        //ssLOG_LINE("Idx: "<<Idx);
 
-        glm::vec4 result = orthMat * glm::vec4(Vertices[0], 0, 1);
-        ssLOG_LINE("result: "<<result);
+        //glm::vec4 result = orthMat * glm::vec4(Vertices[0], 0, 1);
+        //ssLOG_LINE("result: "<<result);
 
 
         GL_CHECK_ERROR( glEnable(GL_BLEND); );

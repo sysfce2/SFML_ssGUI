@@ -34,6 +34,11 @@ namespace Backend
     {
         return true;
     }
+    
+    void BackendDrawingTemplate::DrawToBackBuffer()
+    {
+        
+    }
 
     void BackendDrawingTemplate::Render(glm::u8vec3 clearColor)
     {
