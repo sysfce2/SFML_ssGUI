@@ -78,7 +78,7 @@ namespace std
 namespace ssGUI
 {
 
-class DrawingEntity;
+struct DrawingEntity;
 
 namespace Backend
 {

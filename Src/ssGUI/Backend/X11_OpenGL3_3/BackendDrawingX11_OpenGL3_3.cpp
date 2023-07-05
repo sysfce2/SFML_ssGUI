@@ -158,10 +158,7 @@ namespace Backend
     
     void* BackendDrawingX11_OpenGL3_3::GetRawImageCacheHandle(ssGUI::Backend::BackendImageInterface* backendImage)
     {
-        if(ImageTextures.find(backendImage) == ImageTextures.end())
-            return nullptr;
-        
-        return &ImageTextures[backendImage];
+        return nullptr;
     }
 }
 
